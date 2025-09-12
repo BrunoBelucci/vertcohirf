@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cocohirf"
+version = "1.0"
+description = """cocohirf"""
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = "MIT"
+authors = [
+  { name = "Bruno Belucci", email = "bruno.belucci-teixeira@dauphine.eu" },
+]
+maintainers = [
+  { name = "Bruno Belucci", email = "bruno.belucci-teixeira@dauphine.eu" },
+]
+keywords = [
+    "clustering",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Unix",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "plotly",
+    "mlflow",
+    "psycopg2-binary",
+    "distributed",
+    "dask-jobqueue",
+    "tqdm",
+    "optuna-integration",
+    "func-timeout",
+    "memory-profiler",
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "scikit-posthocs",
+    "scipy",
+    "seaborn",
+    "openml",
+    "ipykernel",
+    "ipywidgets",
+    "optuna",
+    "dask",
+    "dask-ml",
+    "zarr",
+    "graphviz",
+    "pytest",
+]
+
+[project.urls]
+"Source code" = "https://github.com/BrunoBelucci/cocohirf"

@@ -1,0 +1,12 @@
+*ipynb_checkpoints/
+*__pycache__/
+*.db
+*logs/
+*db/
+*run_scripts/
+results/
+.vscode/
+.pytest_cache/
+*work/
+*mlruns/
+*data/
