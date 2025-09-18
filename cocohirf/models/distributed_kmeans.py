@@ -34,7 +34,7 @@ class DistributedKMeans(ClusterMixin, BaseEstimator):
             self._random_state = np.random.default_rng(self._random_state)
         return self._random_state
 
-    def run_local_kmeans(self, X, i_group):
+    def run_local_kmeans(self, X, i_group, return_kmeans=False):
         child_random_state = np.random.default_rng([self.random_state.integers(0, int(1e6)), i_group])
         random_state = child_random_state.integers(0, 1e6)
         kmeans = KMeans(
@@ -48,12 +48,31 @@ class DistributedKMeans(ClusterMixin, BaseEstimator):
         features = self.features_groups[i_group]
         X_group = X[:, features]
         labels = kmeans.fit_predict(X_group)
-        cost = kmeans.inertia_ / X_group.shape[0]
-        distances_from_centers = kmeans.transform(X_group)
         # Select the distance from the closest center for each sample
-        distances_from_cluster_centers = distances_from_centers[np.arange(X_group.shape[0]), labels]
         cluster_centers = kmeans.cluster_centers_
-        return labels, cost, distances_from_cluster_centers, cluster_centers
+        if return_kmeans:
+            return labels, cluster_centers, kmeans
+        return labels, cluster_centers
+
+    def aggregate_data(self, results_i, X, features_groups, sample_weight=None):
+        labels_i, cluster_centers_i = zip(*results_i)
+        n_agents = len(features_groups)
+        n_samples = len(labels_i[0])
+        sample_weight = np.ones(n_samples) / n_samples if sample_weight is None else sample_weight
+
+        # Vectorized center_list construction
+        # Get all possible combinations of cluster indices for n_agents
+        all_indices = np.array(np.meshgrid(*[np.arange(self.kmeans_n_clusters)] * n_agents)).T.reshape(-1, n_agents)
+        # For each agent, select the cluster centers for all combinations
+        center_parts = [cluster_centers_i[j][all_indices[:, j], :] for j in range(n_agents)]
+        # Concatenate along feature axis
+        server_X = np.concatenate(center_parts, axis=1)
+
+        labels_matrix = np.vstack(labels_i)
+        indices = np.sum(labels_matrix[::-1, :] * (self.kmeans_n_clusters ** np.arange(n_agents)[:, None]), axis=0)
+        # Use bincount to sum sample_weight for each unique index
+        server_weight = np.bincount(indices, weights=sample_weight, minlength=server_X.shape[0])
+        return server_X, server_weight
 
     def fit( # type: ignore
         self,
@@ -62,28 +81,10 @@ class DistributedKMeans(ClusterMixin, BaseEstimator):
         y=None,
         sample_weight=None,
     ):
-        n_samples = X.shape[0]
-        sample_weight = np.ones(n_samples) / n_samples if sample_weight is None else sample_weight
         self.features_groups = features_groups
         n_agents = len(features_groups)
         results_i = Parallel(n_jobs=self.n_jobs)(delayed(self.run_local_kmeans)(X, r) for r in range(n_agents))
-        labels_i, costs_i, distances_i, cluster_centers_i = zip(*results_i)
-
-        # Vectorized center_list construction
-        # Get all possible combinations of cluster indices for n_agents
-        all_indices = np.array(np.meshgrid(*[np.arange(self.kmeans_n_clusters)] * n_agents)).T.reshape(-1, n_agents)
-        # For each agent, select the cluster centers for all combinations
-        center_parts = [
-            cluster_centers_i[j][all_indices[:, j], :] for j in range(n_agents)
-        ]
-        # Concatenate along feature axis
-        center_list = np.concatenate(center_parts, axis=1)
-
-        labels_matrix = np.vstack(labels_i)
-        indices = np.sum(labels_matrix[::-1, :] * (self.kmeans_n_clusters ** np.arange(n_agents)[:, None]), axis=0)
-        # Use bincount to sum sample_weight for each unique index
-        center_weights = np.bincount(indices, weights=sample_weight, minlength=center_list.shape[0])
-
+        server_X, server_weight = self.aggregate_data(results_i, X, features_groups, sample_weight)
         server_kmeans = KMeans(
             n_clusters=self.kmeans_n_clusters,
             init=self.kmeans_init,
@@ -92,7 +93,7 @@ class DistributedKMeans(ClusterMixin, BaseEstimator):
             tol=self.kmeans_tol,
             random_state=self.random_state.integers(0, 1e6),
         )
-        server_kmeans.fit(center_list, sample_weight=center_weights)
+        server_kmeans.fit(server_X, sample_weight=server_weight)
         server_kmeans_clusters_centers = server_kmeans.cluster_centers_
 
         labels = []
