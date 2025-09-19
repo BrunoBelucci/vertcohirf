@@ -111,6 +111,7 @@ class DistributedKMeans(ClusterMixin, BaseEstimator):
             costs.append(cost)
         self.labels_ = labels
         self.costs_ = costs
+        return self
 
     def fit_predict(  # type: ignore
         self,

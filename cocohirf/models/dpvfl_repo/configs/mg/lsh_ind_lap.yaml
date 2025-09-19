@@ -1,0 +1,24 @@
+---
+dataset: "imbalancedMG"
+d: 8
+n: 20000
+k: 5
+r: 0.01
+intersection_method: 'ind_lap'
+local_solver: 'lsh_clustering'
+local_branching_per_dim: 3
+local_cluster_budget:
+  - 0.5
+T:
+  - 2
+  - 4
+eps:
+  - 0.5
+  - 1
+  - 1.5
+  - 2
+  - 3
+  - 4
+  - 5
+  - 8
+  - 10
