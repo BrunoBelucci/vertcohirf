@@ -34,6 +34,15 @@ class DistributedKMeans(ClusterMixin, BaseEstimator):
             self._random_state = np.random.default_rng(self._random_state)
         return self._random_state
 
+    @random_state.setter
+    def random_state(self, value):
+        if value is None:
+            self._random_state = np.random.default_rng()
+        elif isinstance(value, int):
+            self._random_state = np.random.default_rng(value)
+        else:
+            raise ValueError("random_state must be an integer or None.")
+
     def run_local_kmeans(self, X, i_group, return_kmeans=False):
         child_random_state = np.random.default_rng([self.random_state.integers(0, int(1e6)), i_group])
         random_state = child_random_state.integers(0, 1e6)
@@ -81,6 +90,10 @@ class DistributedKMeans(ClusterMixin, BaseEstimator):
         y=None,
         sample_weight=None,
     ):
+        # we will work with numpy (arrays) for speed
+        if isinstance(X, pd.DataFrame):
+            X = X.to_numpy()
+
         self.features_groups = features_groups
         n_agents = len(features_groups)
         results_i = Parallel(n_jobs=self.n_jobs)(delayed(self.run_local_kmeans)(X, r) for r in range(n_agents))
@@ -97,7 +110,6 @@ class DistributedKMeans(ClusterMixin, BaseEstimator):
         server_kmeans_clusters_centers = server_kmeans.cluster_centers_
 
         labels = []
-        costs = []
         for i in range(n_agents):
             X_group = X[:, features_groups[i]]
             dist = [
@@ -105,12 +117,8 @@ class DistributedKMeans(ClusterMixin, BaseEstimator):
                 for j in range(self.kmeans_n_clusters)
             ]
             dist = np.asarray(dist).T
-            closest_dist = np.min(dist, axis=1)
-            cost = np.sum(closest_dist**2) / n_samples
             labels.append(np.argmin(dist, axis=1))
-            costs.append(cost)
         self.labels_ = labels
-        self.costs_ = costs
         return self
 
     def fit_predict(  # type: ignore

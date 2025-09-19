@@ -1,16 +1,8 @@
 from cohirf.models.vecohirf import VeCoHiRF
-from cohirf.models.clique import Clique
-from cohirf.models.irfllrr import IRFLLRR
-from cohirf.models.kmeansproj import KMeansProj
-from cohirf.models.proclus import Proclus
-from cohirf.models.scsrgf import SpectralSubspaceRandomization
-from cohirf.models.sklearn import (KMeans, OPTICS, DBSCAN, AgglomerativeClustering, SpectralClustering,
-                                                 MeanShift, AffinityPropagation, HDBSCAN)
-from cohirf.models.batch_cohirf import BatchCoHiRF
-from cohirf.models.pseudo_kernel import PseudoKernelClustering
-from cohirf.models.WBMS import WBMS
-from sklearn.kernel_approximation import Nystroem, RBFSampler
 import optuna
+from cocohirf.models.coreset_kmeans import CoresetKMeans
+from cocohirf.models.distributed_kmeans import DistributedKMeans
+from cocohirf.models.dpvfl import DPVFL
 
 
 models_dict = {
@@ -31,6 +23,66 @@ models_dict = {
                     repetitions=5,
                     kmeans_n_clusters=3,
                 )
+            )
+        ],
+    ),
+    DistributedKMeans.__name__: (
+        DistributedKMeans,
+        dict(),
+        dict(
+            kmeans_n_clusters=optuna.distributions.IntDistribution(2, 30),
+        ),
+        [
+            dict(
+                kmeans_n_clusters=8,
+            )
+        ],
+    ),
+    CoresetKMeans.__name__: (
+        CoresetKMeans,
+        dict(),
+        dict(
+            coreset_size_div=optuna.distributions.IntDistribution(5, 20),
+            alpha=optuna.distributions.FloatDistribution(1.0, 5.0),
+            kmeans_n_clusters=optuna.distributions.IntDistribution(2, 30),
+        ),
+        [
+            dict(
+                coreset_size_div=10,
+                alpha=2.0,
+                kmeans_n_clusters=8,
+            )
+        ],
+    ),
+	"V2way": (
+        DPVFL,
+        dict(mode='v2way'),
+        dict(
+            n_clusters=optuna.distributions.IntDistribution(2, 30),
+            m_div=optuna.distributions.IntDistribution(5, 20),
+            eps=optuna.distributions.FloatDistribution(0.1, 5.0),
+        ),
+        [
+            dict(
+                n_clusters=8,
+                m_div=10,
+                eps=0.5,
+            )
+        ],
+	),
+	"VPC": (
+        DPVFL,
+        dict(mode='vpc'),
+        dict(
+            n_clusters=optuna.distributions.IntDistribution(2, 30),
+            m_div=optuna.distributions.IntDistribution(5, 20),
+            eps=optuna.distributions.FloatDistribution(0.1, 5.0),
+        ),
+        [
+            dict(
+                n_clusters=8,
+                m_div=10,
+                eps=0.5,
             )
         ],
     ),
