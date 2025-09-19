@@ -85,9 +85,9 @@ def default_tree_param(
   min_num_points_in_branching_node = 3 * min_num_points_in_node
 
   #todo: debug
-  print(f"default tree param: min_num_points_in_branching_node={min_num_points_in_branching_node},"
-      f"min_num_points_in_node={min_num_points_in_node},"
-      f"max_depth={max_depth}")
+  # print(f"default tree param: min_num_points_in_branching_node={min_num_points_in_branching_node},"
+  #     f"min_num_points_in_node={min_num_points_in_node},"
+  #     f"max_depth={max_depth}")
   # exit()
 
   return (clustering_params.TreeParam(

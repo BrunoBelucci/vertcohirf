@@ -7,13 +7,13 @@ import copy
 
 from .VBase import VBase
 from .solver_factory import solver_mapping
-from util.save_results import save_result_to_json
-from util.eval_centers import eval_centers, eval_homogeneity_score
-from util.volh import volh_perturb, volh_membership, rr_membership, rr_perturb
-from util.load_config import generate_local_config
-from util.fmsketch import intersection_ca
-from util.postprocess import norm_sub
-from util.local_k import local_k_choose
+from ..util.save_results import save_result_to_json
+from ..util.eval_centers import eval_centers, eval_homogeneity_score
+from ..util.volh import volh_perturb, volh_membership, rr_membership, rr_perturb
+from ..util.load_config import generate_local_config
+from ..util.fmsketch import intersection_ca
+from ..util.postprocess import norm_sub
+from ..util.local_k import local_k_choose
 
 '''
 This is an implementation of the paper Hu Ding et al. "K-Means Clustering with Distributed Dimensions"
@@ -39,10 +39,28 @@ class VPrivClustering(VBase):
         self.private_intersections = []
         self.clean_intersections = []
         self.clean_centers = None
+        self._random_state = config["random_state"] if "random_state" in config else None
+
+    @property
+    def random_state(self):
+        if self._random_state is None:
+            self._random_state = np.random.default_rng()
+        elif isinstance(self._random_state, int):
+            self._random_state = np.random.default_rng(self._random_state)
+        return self._random_state
+
+    @random_state.setter
+    def random_state(self, value):
+        if value is None:
+            self._random_state = np.random.default_rng()
+        elif isinstance(value, int):
+            self._random_state = np.random.default_rng(value)
+        else:
+            raise ValueError("random_state must be an integer or None.")
 
     def fit(self, data, run_clean: bool = True, true_labels: np.array = None):
         if self.intersection_method in ['fmsketch']:
-            n = int(self.config['n'] + np.random.laplace(0, 1 / (0.05 * self.eps)))
+            n = int(self.config['n'] + self.random_state.laplace(0, 1 / (0.05 * self.eps)))
             self.eps *= 0.95
         else:
             n = self.config['n']
@@ -59,7 +77,7 @@ class VPrivClustering(VBase):
                 local_k = local_k_choose(max_k=10, n=data[0].shape[0],
                                          number_sketches=self.config['m'],
                                          epsilon=local_eps, delta=delta)
-                logging.info(f"auto set local k as {local_k}")
+                # logging.info(f"auto set local k as {local_k}")
             elif self.config['local_k'] < np.power(self.config['k'], 1 / parties):
                 local_k = int(np.ceil(np.power(self.config['k'], 1 / parties)))
             else:
@@ -68,20 +86,21 @@ class VPrivClustering(VBase):
             local_k = self.config['k']
 
         local_config = generate_local_config(self.config['d'], self.config['n'], local_k, eps=local_eps)
+        local_config['random_state'] = self.random_state
         for idx, subset_data in enumerate(data):
             # each party local run k-means and get centers
-            logging.info(f"--> Working on client {idx} {subset_data.shape}")
+            # logging.info(f"--> Working on client {idx} {subset_data.shape}")
             solver = self.local_solver(local_config, self.tag)
             solver.fit(subset_data)
             # -> get centers
             centers.append(list(solver.cluster_centers_))
-        logging.info("local kmeans finished...")
+        # logging.info("local kmeans finished...")
 
         # if self.local_solver == solver_mapping['basic']:
         #     # for experiments: if the non-private k-means algorithm is applied on each party's local data
         #     # to show the effect of different intersection algorithms
         #     local_eps *= 2
-        logging.info(f"Privacy budget for computing aggregation: {local_eps}")
+        # logging.info(f"Privacy budget for computing aggregation: {local_eps}")
 
         clean_memberships = []
         for idx, subset_data in enumerate(data):
@@ -96,21 +115,21 @@ class VPrivClustering(VBase):
                                                                                           local_k,
                                                                                           run_clean)
 
-        logging.info(f"# of grid nodes: {len(grids)}; # of intersections: {len(intersection_counts)}")
-        logging.info(f"intersection sizes: {intersection_counts}")
+        # logging.info(f"# of grid nodes: {len(grids)}; # of intersections: {len(intersection_counts)}")
+        # logging.info(f"intersection sizes: {intersection_counts}")
 
         if 'normalize' in self.config and self.config['normalize']:
-            logging.info(f"postprocessing...")
+            # logging.info(f"postprocessing...")
             intersection_counts = norm_sub(intersection_counts, n=n)
 
         if self.intersection_method == 'random':
-            chosen_idxs = np.random.choice(len(grids), size=self.k).astype(int)
+            chosen_idxs = self.random_state.choice(len(grids), size=self.k).astype(int)
             self.centers = np.array(grids)[chosen_idxs]
             loss = eval_centers(data, self.centers)
         else:
             # run k-means again on the weighted centers
-            logging.info(f"central server runs k-means on grids with weights, k={self.k}")
-            final_solver = KMeans(n_clusters=self.k, random_state=0)
+            # logging.info(f"central server runs k-means on grids with weights, k={self.k}")
+            final_solver = KMeans(n_clusters=self.k, random_state=self.random_state.integers(0, 1e6))
             # print(grids)
             # print(intersection_counts)
             final_solver.fit(grids, sample_weight=np.array(intersection_counts) + 1e-5)
@@ -123,25 +142,25 @@ class VPrivClustering(VBase):
 
         if run_clean:
             # run k-means again on the weighted centers
-            logging.info("running with non-private intersection for comparison...")
-            clean_final_solver = KMeans(n_clusters=self.k, random_state=0)
+            # logging.info("running with non-private intersection for comparison...")
+            clean_final_solver = KMeans(n_clusters=self.k, random_state=self.random_state.integers(0, 1e6))
             clean_final_solver.fit(grids, sample_weight=np.array(clean_intersection_counts) + 1e-5)
             clean_score = eval_centers(data, clean_final_solver.cluster_centers_)
             losses["clean_final_loss"] = clean_score
             self.clean_centers = clean_final_solver.cluster_centers_
-            logging.info(f"intersection diff {intersection_counts - clean_intersection_counts}")
+            # logging.info(f"intersection diff {intersection_counts - clean_intersection_counts}")
             if 'label_score' in self.config:
                 # print(self.config['label_score'], self.config['label_score'] == True)
                 losses['homogeneity'], losses['completeness'] = eval_homogeneity_score(data, self.centers, true_labels)
 
-        self.save_results(losses)
-        return self.centers
+        # self.save_results(losses)
+        return final_solver
 
     def build_weighted_grids(self, n, data, centers, clean_memberships, eps, local_k, run_clean):
         memberships = []
         parties = self.config['T']
         # cartesian product of the local centers
-        logging.info("generate cartesian product of local centers ...")
+        # logging.info("generate cartesian product of local centers ...")
         cartesian = list(itertools.product(*centers))
         grids = []
         for combine in cartesian:
@@ -173,29 +192,30 @@ class VPrivClustering(VBase):
             for idx, membership in enumerate(clean_memberships):
                 tmp = [np.array(list(m)) for m in membership]
                 splits.append(tmp)
-            logging.info(f"compute intersection CA with FM sketch...")
+            # logging.info(f"compute intersection CA with FM sketch...")
             intersection_counts = intersection_ca(n=n,
                                                   splits=splits,
                                                   m=self.config['m'],
                                                   gamma=1.0,
                                                   priv_config=priv_config,
                                                   multithreads=20,
+                                                  random_state=self.random_state
                                                   )
             intersection_counts[intersection_counts < 0] = 0
         elif self.intersection_method == 'allone' or self.intersection_method == 'random':
-            intersection_counts = np.ones(shape=np.product([len(c) for c in centers]))
+            intersection_counts = np.ones(shape=np.prod([len(c) for c in centers]))
         elif self.intersection_method == 'uniform':
             portions = []
             for m in clean_memberships:
                 portions.append([len(members) / n for members in m])
             portions_combines = list(itertools.product(*portions))
-            intersection_counts = [n * np.product(p) for p in portions_combines]
+            intersection_counts = [n * np.prod(p) for p in portions_combines]
         elif self.intersection_method == 'ind_lap':
             portions = []
             for m in clean_memberships:
-                portions.append([len(members) / n + np.random.laplace(0, 1/eps) for members in m])
+                portions.append([len(members) / n + self.random_state.laplace(0, 1/eps) for members in m])
             portions_combines = list(itertools.product(*portions))
-            intersection_counts = [n * np.product(p) for p in portions_combines]
+            intersection_counts = [n * np.prod(p) for p in portions_combines]
         elif self.intersection_method == 'nonpriv':
             clean_intersections = self.intersection(clean_memberships)
             clean_intersection_counts = np.array([len(s) for s in clean_intersections])
@@ -206,7 +226,7 @@ class VPrivClustering(VBase):
         if run_clean:
             clean_intersections = self.intersection(clean_memberships)
             clean_intersection_counts = np.array([len(s) for s in clean_intersections])
-            logging.info(f"(clean) intersection sizes: {clean_intersection_counts}")
+            # logging.info(f"(clean) intersection sizes: {clean_intersection_counts}")
             self.clean_intersections = clean_intersection_counts
             return grids, intersection_counts, clean_intersection_counts
         else:
@@ -221,19 +241,19 @@ class VPrivClustering(VBase):
 
         if local_k > 3 * int(round(np.exp(eps))) + 2:
             # run OLH to perturb labels
-            logging.info("===> using OLH for membership")
-            perturbed = volh_perturb(labels, eps)
+            # logging.info("===> using OLH for membership")
+            perturbed = volh_perturb(labels, eps, random_state=self.random_state)
             # decode perturbation and get membership
             memberships = volh_membership(perturbed, domain=local_k, g=int(round(np.exp(eps))) + 1)
         else:
             # run RR to perturb labels
-            logging.info("===> using RR for membership")
-            perturbed = rr_perturb(labels, eps, local_k)
+            # logging.info("===> using RR for membership")
+            perturbed = rr_perturb(labels, eps, local_k, random_state=self.random_state)
             # generate rr membership
             memberships = rr_membership(perturbed, local_k)
             # todo: debug
-            print(f"*** rr true label histogram: {np.histogram(labels, bins=local_k, range=(0, local_k))}")
-            print(f"*** rr perturbed label histogram: {np.histogram(perturbed, bins=local_k, range=(0, local_k))}")
+            # print(f"*** rr true label histogram: {np.histogram(labels, bins=local_k, range=(0, local_k))}")
+            # print(f"*** rr perturbed label histogram: {np.histogram(perturbed, bins=local_k, range=(0, local_k))}")
 
         return memberships
 
@@ -266,10 +286,10 @@ class VPrivClustering(VBase):
         # compute unbiased frequencies
         inv_prob = np.linalg.inv(forward_probs)
         # todo: debug
-        print(f"******* sizes: {inv_prob.shape}, {adjusted.shape}")
+        # print(f"******* sizes: {inv_prob.shape}, {adjusted.shape}")
         adjusted = np.matmul(inv_prob, adjusted)
 
-        logging.info(f"sum of adjust {np.sum(adjusted)}")
+        # logging.info(f"sum of adjust {np.sum(adjusted)}")
         adjusted[adjusted < 0] = 0
 
         return adjusted

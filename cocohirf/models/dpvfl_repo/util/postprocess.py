@@ -33,6 +33,6 @@ def norm_sub(estimates: np.array, n: int):
     # print(cumsum)
     # print(diffs)
     # print(rho)
-    print(f"after normsub- min:{np.min(adjusted_estimates)}, max: {np.max(adjusted_estimates)}, sum: {np.sum(adjusted_estimates)}")
+    # print(f"after normsub- min:{np.min(adjusted_estimates)}, max: {np.max(adjusted_estimates)}, sum: {np.sum(adjusted_estimates)}")
     # exit()
     return adjusted_estimates

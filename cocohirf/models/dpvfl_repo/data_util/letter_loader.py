@@ -31,7 +31,7 @@ class LetterLoader:
         logging.info(f"loaded letter-recognition datasets with size {df.shape}...")
         # print(df.head())
         df.drop(columns=[0], inplace=True)
-        print(df.columns)
+        # print(df.columns)
         for col in df:
             df[col] -= (df[col].min() + df[col].max()) / 2
             df[col] /= df[col].max()

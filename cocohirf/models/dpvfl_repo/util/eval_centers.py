@@ -6,7 +6,7 @@ def eval_centers(data, centers):
     k = len(centers)
     if isinstance(data, list):
         data = np.concatenate(data, axis=1)
-    print(f"data shape: {data.shape}")
+    # print(f"data shape: {data.shape}")
     scores = np.zeros(shape=(data.shape[0], k))
     for i in range(k):
         scores[:, i] = np.linalg.norm(data - centers[i], axis=1)

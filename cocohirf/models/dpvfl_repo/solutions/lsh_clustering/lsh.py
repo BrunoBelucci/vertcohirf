@@ -43,10 +43,11 @@ class SimHash():
     dim: int
     max_hash_len: int
     projection_vectors: typing.Optional[np.ndarray] = None
+    random_state: typing.Optional[np.random.Generator] = None
 
     def __post_init__(self):
         if self.projection_vectors is None:
-            self.projection_vectors = np.random.normal(size=(self.max_hash_len, self.dim))
+            self.projection_vectors = self.random_state.normal(size=(self.max_hash_len, self.dim))
 
     def group_by_next_hash(self,
                            datapoints: np.ndarray,

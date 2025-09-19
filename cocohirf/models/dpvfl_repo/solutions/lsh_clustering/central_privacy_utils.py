@@ -42,7 +42,7 @@ class AveragePrivacyParam(clustering_params.DifferentialPrivacyParam):
 
 def get_private_average(nonprivate_points: np.ndarray, private_count: int,
                         average_privacy_param: AveragePrivacyParam,
-                        dim: int) -> np.ndarray:
+                        dim: int, random_state: np.random.Generator) -> np.ndarray:
   """Returns a differentially private average of the given data points.
 
   Args:
@@ -83,7 +83,7 @@ def get_private_average(nonprivate_points: np.ndarray, private_count: int,
       sensitivity=average_privacy_param.sensitivity)
   # print("..", average_privacy_param.epsilon, laplace_param, )
   # print(".. semi-clean avg point", sum_points / private_count)
-  sum_points += np.random.laplace(scale=laplace_param, size=dim)
+  sum_points += random_state.laplace(scale=laplace_param, size=dim)
   return sum_points / private_count
 
 

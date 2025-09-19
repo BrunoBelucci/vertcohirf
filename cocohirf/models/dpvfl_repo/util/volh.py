@@ -113,16 +113,16 @@ from typing import List, Set
 #         print(g, end=' ')
 #         main()
 
-def rr_perturb(labels: List[int], eps: float, domain: int) -> List[int]:
+def rr_perturb(labels: List[int], eps: float, domain: int, random_state) -> List[int]:
     n = len(labels)
     p = math.exp(eps) / (math.exp(eps) + domain - 1)
     q = 1.0 / (math.exp(eps) + domain - 1)
-    p_sample = np.random.random_sample(size=n)
+    p_sample = random_state.random_sample(size=n)
     Y = -1 * np.ones(shape=n)
     for i in range(n):
         if p_sample[i] > p - q:
             # perturb
-            Y[i] = np.random.randint(0, domain)
+            Y[i] = random_state.integers(0, domain)
         else:
             Y[i] = labels[i]
     return Y
@@ -136,18 +136,24 @@ def rr_membership(perturbed: List[int], domain: int) -> List[Set[int]]:
     return memberships
 
 
-def volh_perturb(labels: List[int], eps: float, domain: int = 0) -> List[int]:
+def volh_perturb(labels: List[int], eps: float, domain: int = 0, random_state=None) -> List[int]:
+    if random_state is None:
+        random_state = np.random.default_rng()
+    elif isinstance(random_state, int):
+        random_state = np.random.default_rng(random_state)
+    elif not isinstance(random_state, np.random.Generator):
+        raise ValueError("random_state must be an integer or None.")
     n = len(labels)
     g = int(round(math.exp(eps))) + 1
     p = math.exp(eps) / (math.exp(eps) + g - 1)
     q = 1.0 / (math.exp(eps) + g - 1)
-    p_sample = np.random.random_sample(size=n)
+    p_sample = random_state.random(size=n)  
     Y = -1 * np.ones(shape=n)
     for i in range(n):
         y = (xxhash.xxh32(str(labels[i]), seed=i).intdigest() % g)
         if p_sample[i] > p - q:
             # perturb
-            y = np.random.randint(0, g)
+            y = random_state.integers(0, g)
         Y[i] = y
     return Y
 

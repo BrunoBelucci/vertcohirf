@@ -152,9 +152,9 @@ class Data():
     scale = self.radius / np.maximum(
         np.linalg.norm(points, axis=-1), self.radius).reshape(-1, 1)
     if np.min(scale) < 1.0:
-      logging.debug(
-          "Found %s points outside of radius provided, rescaling them to "
-          "have norm exactly equal to the radius.", np.sum(scale < 1.0))
+      # logging.debug(
+      #     "Found %s points outside of radius provided, rescaling them to "
+      #     "have norm exactly equal to the radius.", np.sum(scale < 1.0))
     return points * scale
 
 

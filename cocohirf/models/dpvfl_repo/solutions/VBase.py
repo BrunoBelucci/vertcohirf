@@ -13,12 +13,29 @@ import logging
 
 class VBase:
     def __init__(self, config, tag, **kwargs):
-        logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
+        # logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
         self.config = config
         self.tag = tag
         self.k = config['k']
         self.intersection_method = None
+        self._random_state = config["random_state"] if "random_state" in config else None
 
+    @property
+    def random_state(self):
+        if self._random_state is None:
+            self._random_state = np.random.default_rng()
+        elif isinstance(self._random_state, int):
+            self._random_state = np.random.default_rng(self._random_state)
+        return self._random_state
+
+    @random_state.setter
+    def random_state(self, value):
+        if value is None:
+            self._random_state = np.random.default_rng()
+        elif isinstance(value, int):
+            self._random_state = np.random.default_rng(value)
+        else:
+            raise ValueError("random_state must be an integer or None.")
 
     def noisymin_membership(self, data, centers, eps):
         distance = np.zeros(shape=(data.shape[0], len(centers)))
@@ -26,7 +43,7 @@ class VBase:
             distance[:, i] = np.linalg.norm(data - c, 2, axis=1)
 
         # add noise to distance
-        noisy_dist = distance + np.random.laplace(0, 2 / eps, size=distance.shape)
+        noisy_dist = distance + self.random_state.laplace(0, 2 / eps, size=distance.shape)
 
         # select the center with minimum distance for each user data
         noisy_centers = np.argmin(noisy_dist, axis=1)
@@ -58,4 +75,3 @@ class VBase:
             intersect = combine[0].intersection(*combine[1:])
             intersections.append(intersect)
         return intersections
-

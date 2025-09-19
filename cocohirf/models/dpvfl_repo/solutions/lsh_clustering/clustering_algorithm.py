@@ -129,7 +129,7 @@ class ClusteringResult():
             return (min_index, squared_distances[min_index])
 
         if self.labels is None and self.loss is None:
-            result = [closest_center(datapoint) for datapoint in self.data.datapoints]
+            result = [closest_center(datapoint) for datapoint in self.data.datapoints]  # THIS WILL BE REALLY SLOW FOR LARGE N
             object.__setattr__(self, "labels",
                                np.array([res[0] for res in result], dtype=int))
             object.__setattr__(self, "loss", sum([res[1] for res in result]))
@@ -190,7 +190,8 @@ def private_lsh_clustering(
         privacy_budget_split: typing.Optional[
             clustering_params.PrivacyBudgetSplit] = None,
         tree_param: typing.Optional[clustering_params.TreeParam] = None,
-        short_description: str = "ClusteringParam") -> ClusteringResult:
+        short_description: str = "ClusteringParam",
+        random_state: typing.Optional[int | np.random.Generator] = None) -> ClusteringResult:
     """Clusters data into k clusters.
 
   Args:
@@ -209,6 +210,12 @@ def private_lsh_clustering(
     ClusteringResult with differentially private centers. The rest of
     ClusteringResult is nonprivate, and only provided for convenience.
   """
+    if random_state is None:
+        random_state = np.random.default_rng()
+    elif isinstance(random_state, int):
+        random_state = np.random.default_rng(random_state)
+    elif not isinstance(random_state, np.random.Generator):
+        raise ValueError("random_state must be an integer, np.random.Generator or None.")
     # Initialize the parameters.
     if privacy_budget_split is None:
         privacy_budget_split = clustering_params.PrivacyBudgetSplit()
@@ -222,30 +229,30 @@ def private_lsh_clustering(
                                                          tree_param,
                                                          short_description,
                                                          data.radius)
-    logging.debug("clustering_param: %s", clustering_param)
+    # logging.debug("clustering_param: %s", clustering_param)
 
     # To guarantee privacy, enforce the radius provided.
     clipped_data = clustering_params.Data(data.clip_by_l1_radius(), data.radius,
                                           data.labels)
 
     coreset: private_outputs.PrivateWeightedData = get_private_coreset(
-        data, clustering_param, private_count)
+        data, clustering_param, private_count, random_state)
 
     cur_k = min(k, len(coreset.datapoints))
-    logging.debug(
-        "Starting k-means++ computation on private coreset with k=%d. This may "
-        "be less than the original if generated coreset data ended up with "
-        "less than k unique points.", cur_k)
+    # logging.debug(
+    #     "Starting k-means++ computation on private coreset with k=%d. This may "
+    #     "be less than the original if generated coreset data ended up with "
+    #     "less than k unique points.", cur_k)
     kmeans = sklearn.cluster.KMeans(
-        n_clusters=cur_k, init="k-means++").fit(
+        n_clusters=cur_k, init="k-means++", random_state=random_state.integers(0, 1e6)).fit(
         coreset.datapoints, sample_weight=coreset.weights)
 
     # handle the case that k > len(coreset.datapoints), generate random k - len(coreset.datapoints) centers
     if k > len(coreset.datapoints):
-        random_centers = np.random.uniform(low=-1, high=1, size=(k - len(coreset.datapoints), data.dim))
+        random_centers = random_state.uniform(low=-1, high=1, size=(k - len(coreset.datapoints), data.dim))
         centers = np.append(kmeans.cluster_centers_, random_centers, axis=0)
-        logging.info(
-            f"!!!! add {k - len(coreset.datapoints)} random centers because coreset size {len(coreset.datapoints)}")
+        # logging.info(
+        #     f"!!!! add {k - len(coreset.datapoints)} random centers because coreset size {len(coreset.datapoints)}")
     else:
         centers = kmeans.cluster_centers_
 
@@ -259,6 +266,7 @@ def get_private_coreset(
         data: clustering_params.Data,
         clustering_param: clustering_params.ClusteringParam,
         private_count: typing.Optional[int],
+        random_state: np.random.Generator
 ) -> private_outputs.PrivateWeightedData:
     """Returns private coreset, when clustered it approximates data clustering.
 
@@ -268,17 +276,17 @@ def get_private_coreset(
     private_count: Optional private count. If None, the private count will be
       computed.
   """
-    logging.debug("Starting process to get private coreset.")
-    root = lsh_tree.root_node(data, clustering_param, private_count)
+    # logging.debug("Starting process to get private coreset.")
+    root = lsh_tree.root_node(data, clustering_param, private_count, random_state)
 
     # Root node must have private count >= 1.
     root.private_count = max(1, root.private_count)
     leaves = lsh_tree.LshTree(root).leaves
     coreset_points = []
     coreset_point_weights = []
-    logging.info("extract leaves")
+    # logging.info("extract leaves")
     for leaf in leaves:
-        coreset_points.append(leaf.get_private_average())
+        coreset_points.append(leaf.get_private_average(random_state))
         # print("coreset point", coreset_points[-1])
         coreset_point_weights.append(leaf.private_count)
         # print("coreset point weight", coreset_point_weights[-1])
@@ -287,9 +295,9 @@ def get_private_coreset(
     # To improve accuracy, we can clip the coreset points to the provided radius.
     coreset_points = data.clip_by_l1_radius(np.array(coreset_points))
 
-    logging.debug("Finished generating private coreset.")
-    logging.debug("The coreset consists of %s points.", len(coreset_points))
-    logging.debug("The coreset weights are: %s.", coreset_point_weights)
+    # logging.debug("Finished generating private coreset.")
+    # logging.debug("The coreset consists of %s points.", len(coreset_points))
+    # logging.debug("The coreset weights are: %s.", coreset_point_weights)
     # exit()
     return private_outputs.PrivateWeightedData(
         np.array(coreset_points), np.array(coreset_point_weights))

@@ -19,6 +19,6 @@ if __name__ == '__main__':
     S = 4
     epss = np.array([0.5, 1, 2, 3, 4, 5])
     for eps in epss:
-        print(f"==== epsilon: {eps}")
+        # print(f"==== epsilon: {eps}")
         k = local_k_choose(10, n=n, number_sketches=4096, epsilon=eps / (S * 2), delta=1/n)
-        print(f"choose k:{k}")
+        # print(f"choose k:{k}")

@@ -2,8 +2,8 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 import logging
 
-from util.eval_centers import eval_centers
-from util.save_results import save_result_to_json
+from ..util.eval_centers import eval_centers
+from ..util.save_results import save_result_to_json
 
 
 class BasicKmeans(KMeans):
@@ -23,11 +23,11 @@ class BasicKmeans(KMeans):
         super().fit(data)
         labels = self.labels_
         losses = eval_centers(data, self.cluster_centers_)
-        logging.info(f"local kmeans loss: {losses}")
+        # logging.info(f"local kmeans loss: {losses}")
         if self.save_result:
             silhouette = None
             # silhouette = silhouette_score(data, labels, metric='euclidean')
-            logging.info(f"silhouette score with {self.k} centers is {silhouette}")
+            # logging.info(f"silhouette score with {self.k} centers is {silhouette}")
             self.save_results(losses, silhouette)
         return self.cluster_centers_
 
@@ -38,5 +38,5 @@ class BasicKmeans(KMeans):
             "final_centers": self.cluster_centers_,
             "silhouette": silhouette,
         }
-        print("save results...")
+        # print("save results...")
         save_result_to_json(results, self.tag, experiment=self.config['dataset']+"_basic")

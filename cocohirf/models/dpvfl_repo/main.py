@@ -9,12 +9,12 @@ from solutions.factory import solutions
 from util.load_config import load_split_config
 from util.eval_centers import eval_centers
 
-logging.basicConfig(format='%(asctime)s - %(module)s  - %(message)s', level=logging.INFO)
+# logging.basicConfig(format='%(asctime)s - %(module)s  - %(message)s', level=logging.INFO)
 
 
 def experiment(config):
     config['solution'] = args.solution
-    logging.info(f"configs: {config}")
+    # logging.info(f"configs: {config}")
     dataloader = Dataloader()
     data = dataloader.load_data(config=config)
     if args.solution == 'VPC' or args.solution == 'DPLloyd' or args.solution == 'VPG':
@@ -22,9 +22,9 @@ def experiment(config):
     else:
         solver = solutions[args.solution](config, tag=args.tag, save_result=True)
     centers = solver.fit(data)
-    logging.info(f"centers return: {centers}")
+    # logging.info(f"centers return: {centers}")
     score = eval_centers(data, centers)
-    logging.info(f"score of {args.solution}: {score}")
+    # logging.info(f"score of {args.solution}: {score}")
 
 
 if __name__ == '__main__':

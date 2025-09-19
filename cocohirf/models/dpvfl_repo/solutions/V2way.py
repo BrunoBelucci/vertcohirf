@@ -7,13 +7,13 @@ import pandas as pd
 
 from .VPrivClustering import VPrivClustering
 from .solver_factory import solver_mapping
-from util.save_results import save_result_to_json
-from util.eval_centers import eval_centers, eval_homogeneity_score
-from util.volh import volh_perturb, volh_membership, rr_membership, rr_perturb
-from util.load_config import generate_local_config
-from util.fmsketch import get_one_n_two_way_intersection_est
-from util.postprocess import norm_sub
-from util.local_k import local_k_choose
+from ..util.save_results import save_result_to_json
+from ..util.eval_centers import eval_centers, eval_homogeneity_score
+from ..util.volh import volh_perturb, volh_membership, rr_membership, rr_perturb
+from ..util.load_config import generate_local_config
+from ..util.fmsketch import get_one_n_two_way_intersection_est
+from ..util.postprocess import norm_sub
+from ..util.local_k import local_k_choose
 
 '''
 This is an implementation of the paper Hu Ding et al. "K-Means Clustering with Distributed Dimensions"
@@ -43,14 +43,32 @@ class V2way(VPrivClustering):
         self.update_step = 0.1
         self.one_ways = None
         self.clean_oneways = None
+        self._random_state = config['random_state'] if 'random_state' in config else None
+
+    @property
+    def random_state(self):
+        if self._random_state is None:
+            self._random_state = np.random.default_rng()
+        elif isinstance(self._random_state, int):
+            self._random_state = np.random.default_rng(self._random_state)
+        return self._random_state
+
+    @random_state.setter
+    def random_state(self, value):
+        if value is None:
+            self._random_state = np.random.default_rng()
+        elif isinstance(value, int):
+            self._random_state = np.random.default_rng(value)
+        else:
+            raise ValueError("random_state must be an integer or None.")
 
     def fit(self, data, run_clean: bool = True, true_labels: np.array = None):
         if self.intersection_method in ['fmsketch']:
-            n = int(self.config['n'] + np.random.laplace(0, 1 / (0.02 * self.eps)))
+            n = int(self.config['n'] + self.random_state.laplace(0, 1 / (0.02 * self.eps)))
             self.eps *= 0.98
         else:
             n = self.config['n']
-        logging.info(f'n: {n}')
+        # logging.info(f'n: {n}')
         centers = []
         clean_memberships = []
         parties = len(data)
@@ -76,7 +94,7 @@ class V2way(VPrivClustering):
                 # todo: ad hoc for rebuttal
                 if self.config['T'] > 4:
                     local_k = min(local_k, self.config['k'])
-                logging.info(f"auto set local k as {local_k}")
+                # logging.info(f"auto set local k as {local_k}")
             elif self.config['local_k'] < np.power(self.config['k'], 1/parties):
                 local_k = int(np.ceil(np.power(self.config['k'], 1 / parties)))
             else:
@@ -85,19 +103,20 @@ class V2way(VPrivClustering):
             local_k = self.config['k']
 
         local_config = generate_local_config(self.config['d'], self.config['n'], local_k, eps=local_clustering_eps)
+        local_config['random_state'] = self.random_state
         for idx, subset_data in enumerate(data):
             # each party local run k-means and get centers
-            logging.info(f"--> Working on client {idx} {subset_data.shape}")
+            # logging.info(f"--> Working on client {idx} {subset_data.shape}")
             solver = self.local_solver(local_config, self.tag)
             solver.fit(subset_data)
             # -> get centers
             centers.append(list(solver.cluster_centers_))
             # # todo: debug
             # print(f"*** len of party {idx} centers: {len(solver.cluster_centers_)}")
-        logging.info("local kmeans finished...")
+        # logging.info("local kmeans finished...")
         # exit()
 
-        logging.info(f"Privacy budget for computing aggregation: {local_aggregation_eps}")
+        # logging.info(f"Privacy budget for computing aggregation: {local_aggregation_eps}")
 
         clean_memberships = []
         for idx, subset_data in enumerate(data):
@@ -112,20 +131,20 @@ class V2way(VPrivClustering):
                                                                                           local_k,
                                                                                           run_clean)
 
-        logging.info(f"# of grid nodes: {len(grids)}; # of intersections: {len(intersection_counts)}")
-        logging.info(f"intersection sizes: {intersection_counts}")
+        # logging.info(f"# of grid nodes: {len(grids)}; # of intersections: {len(intersection_counts)}")
+        # logging.info(f"intersection sizes: {intersection_counts}")
 
         if 'normalize' in self.config and self.config['normalize']:
-            logging.info(f"postprocessing...")
+            # logging.info(f"postprocessing...")
             intersection_counts = norm_sub(intersection_counts, n=n)
 
         if self.intersection_method == 'random':
-            chosen_idxs = np.random.choice(len(grids), size=self.k).astype(int)
+            chosen_idxs = self.random_state.choice(len(grids), size=self.k).astype(int)
             self.centers = np.array(grids)[chosen_idxs]
             loss = eval_centers(data, self.centers)
         else:
             # run k-means again on the weighted centers
-            final_solver = KMeans(n_clusters=self.k, random_state=0)
+            final_solver = KMeans(n_clusters=self.k, random_state=self.random_state.integers(0, 1e6))
             # print(grids)
             final_solver.fit(grids, sample_weight=np.array(intersection_counts) + 1e-5)
 
@@ -137,24 +156,24 @@ class V2way(VPrivClustering):
 
         if run_clean:
             # run k-means again on the weighted centers
-            clean_final_solver = KMeans(n_clusters=self.k, random_state=0)
+            clean_final_solver = KMeans(n_clusters=self.k, random_state=self.random_state.integers(0, 1e6))
             clean_final_solver.fit(grids, sample_weight=np.array(clean_intersection_counts) + 1e-5)
             clean_score = eval_centers(data, clean_final_solver.cluster_centers_)
             losses["clean_final_loss"] = clean_score
             self.clean_centers = clean_final_solver.cluster_centers_
-            logging.info(f"intersection diff {intersection_counts - clean_intersection_counts}")
+            # logging.info(f"intersection diff {intersection_counts - clean_intersection_counts}")
             if 'label_score' in self.config:
                 # print(self.config['label_score'], self.config['label_score'] == True)
                 losses['homogeneity'], losses['completeness'] = eval_homogeneity_score(data, self.centers, true_labels)
-        self.save_results(losses)
+        # self.save_results(losses)
 
-        return self.centers
+        return final_solver
 
     def build_weighted_grids(self, n, data, centers, clean_memberships, eps, local_k, run_clean):
         memberships = []
         parties = self.config['T']
         # cartesian product of the local centers
-        logging.info("generate cartesian product of local centers ...")
+        # logging.info("generate cartesian product of local centers ...")
         cartesian = list(itertools.product(*centers))
         grids = []
         for combine in cartesian:
@@ -190,19 +209,20 @@ class V2way(VPrivClustering):
                     # # enforcing consistency with one ways
                     # two_way = self.two_way_consistency(i, j, two_way, one_ways)
                     two_ways[(i, j)] = two_way
-                    logging.info(f"build {i} x {j} intersection 2-way, total count: {np.sum(two_ways[(i, j)])}")
+                    # logging.info(f"build {i} x {j} intersection 2-way, total count: {np.sum(two_ways[(i, j)])}")
         elif self.intersection_method in ['fmsketch', '1way_fm']:
             priv_config = {'eps': eps, 'delta': 1 / n}
             splits = []
             for idx, membership in enumerate(clean_memberships):
                 tmp = [np.array(list(m)) for m in membership]
                 splits.append(tmp)
-            logging.info(f"compute intersection CA with FM sketch...")
+            # logging.info(f"compute intersection CA with FM sketch...")
             one_ways, two_ways = get_one_n_two_way_intersection_est(n, splits,
                                                                     m=self.config['m'],
                                                                     gamma=1,
                                                                     priv_config=priv_config,
-                                                                    multithreads=20)
+                                                                    multithreads=20,
+                                                                    random_state=self.random_state)
             for key, marginal in two_ways.items():
                 two_ways[key] = norm_sub(marginal, n=n)
             for i in range(len(one_ways)):
@@ -217,14 +237,14 @@ class V2way(VPrivClustering):
         for hist in one_ways:
             hist *= (n / np.sum(hist))
             portions.append(list(hist / n))
-            print(portions[-1])
+            # print(portions[-1])
         portions_combines = list(itertools.product(*portions))
-        grid_weights = np.array([n * np.product(p) for p in portions_combines])
+        grid_weights = np.array([n * np.prod(p) for p in portions_combines])
         # change grid_weight to pd.Dataframe for easier groupby operation
         grid_weights_df = self.prepare_update(grid_weights, [len(c) for c in centers])
         if not self.intersection_method.startswith('1way'):
-            print(grid_weights_df)
-            print("one ways:", one_ways)
+            # print(grid_weights_df)
+            # print("one ways:", one_ways)
             # if we just use 1way, then just relies on the dependent assumption, otherwise
             # iteratively update so that the grid weights approach the two-way intersection counts
             self.max_itr = parties * (parties - 1) * 20
@@ -234,7 +254,7 @@ class V2way(VPrivClustering):
                 step_size = 0.5
                 self.max_itr = parties * (parties - 1) * 15
             for itr in range(self.max_itr):
-                print(f"iteration: {itr} {step_size}")
+                # print(f"iteration: {itr} {step_size}")
                 grid_weights_df = self.one_itr_update(two_ways=two_ways,
                                                       grid_weights_df=grid_weights_df,
                                                       parties=parties,
@@ -259,7 +279,7 @@ class V2way(VPrivClustering):
                 self.clean_oneways.append([len(m) for m in membership])
             clean_intersections = self.intersection(clean_memberships)
             clean_intersection_counts = np.array([len(s) for s in clean_intersections])
-            logging.info(f"(clean) intersection sizes: {clean_intersection_counts}")
+            # logging.info(f"(clean) intersection sizes: {clean_intersection_counts}")
             self.clean_intersections = clean_intersection_counts
             return grids, grid_weights_df.values.flatten(), clean_intersection_counts
         else:
@@ -331,14 +351,11 @@ class V2way(VPrivClustering):
             column_sum = np.sum(two_way, axis=0)
             column_diff = one_ways[j] - column_sum.values
             two_way += column_diff.reshape((1, len(column_diff))) * self.update_step
-            logging.info(f"enforcing {i} x {j} 2-way consistency, {np.sum(row_diff)} {np.sum(column_diff)}")
+            # logging.info(f"enforcing {i} x {j} 2-way consistency, {np.sum(row_diff)} {np.sum(column_diff)}")
         return two_way.stack().values.flatten()
 
     def one_itr_update(self, two_ways: dict, grid_weights_df: pd.DataFrame, parties: int, step_size: float):
-        i = np.random.choice(parties)
-        j = np.random.choice(parties)
-        while i == j:
-            j = np.random.choice(parties)
+        i, j = self.random_state.choice(parties, size=2, replace=False)
         i, j = min(i, j), max(i, j)
         # print(f"update {i, j}")
 
@@ -367,9 +384,9 @@ class V2way(VPrivClustering):
                 factor = 1
             grid_weights_df.loc[full] += diff.loc[pair] * step_size * factor
             grid_weights_df[grid_weights_df <= 0] = 1e-5
-        logging.info(f"{i} x {j} loss: {np.linalg.norm(diff.values, 1)}, "
-                     f" total count: {np.sum(grid_weights_df.values)}"
-                     f" max: {np.max(grid_weights_df.values)}, max idx: {np.argmax(grid_weights_df.values)}"
-                     f" min: {np.min(grid_weights_df.values)}")
+        # logging.info(f"{i} x {j} loss: {np.linalg.norm(diff.values, 1)}, "
+        #              f" total count: {np.sum(grid_weights_df.values)}"
+        #              f" max: {np.max(grid_weights_df.values)}, max idx: {np.argmax(grid_weights_df.values)}"
+        #              f" min: {np.min(grid_weights_df.values)}")
 
         return grid_weights_df

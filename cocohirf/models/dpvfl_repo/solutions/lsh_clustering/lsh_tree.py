@@ -51,7 +51,7 @@ class LshTreeNode():
     if self.private_count is None:
       self.get_private_count()
 
-  def get_private_average(self) -> np.ndarray:
+  def get_private_average(self, random_state) -> np.ndarray:
     """Returns and saves private average of the points in the node.
 
     Requires that self.private_count >= 1.
@@ -67,7 +67,7 @@ class LshTreeNode():
     self.private_average = central_privacy_utils.get_private_average(
         self.nonprivate_points, self.private_count,
         central_privacy_utils.AveragePrivacyParam.from_clustering_param(
-            self.clustering_param), self.sim_hash.dim)
+            self.clustering_param), self.sim_hash.dim, random_state)
     return self.private_average
 
   def get_private_count(self) -> int:
@@ -118,7 +118,7 @@ NodesToBranch = LshTreeLevel
 
 def root_node(data: clustering_params.Data,
               clustering_param: clustering_params.ClusteringParam,
-              private_count: typing.Optional[int] = None):
+              private_count: typing.Optional[int] = None, random_state=None):
   """Returns root node for an LSH prefix tree.
 
   Args:
@@ -127,7 +127,7 @@ def root_node(data: clustering_params.Data,
     private_count: Private count for the number of datapoints. If None, the
       private count will be computed.
   """
-  sim_hash = lsh.SimHash(data.dim, clustering_param.tree_param.max_depth)
+  sim_hash = lsh.SimHash(data.dim, clustering_param.tree_param.max_depth, random_state=random_state)
   return LshTreeNode(
       "",
       data.datapoints,
@@ -155,8 +155,8 @@ class LshTree():
     if root.private_count < 1:
       raise ValueError("Private count of the root must be at least 1.")
     clustering_param = root.clustering_param
-    logging.debug("Starting tree construction with max_levels %s",
-                  clustering_param.tree_param.max_depth)
+    # logging.debug("Starting tree construction with max_levels %s",
+    #               clustering_param.tree_param.max_depth)
     level_idx: LevelIndex = 0
     self.tree: typing.Dict[LevelIndex, LshTreeLevel] = dict()
     self.tree[level_idx] = [root]
@@ -173,9 +173,9 @@ class LshTree():
         # print(f"level {level_idx} add {len(next_level)} nodes...")
       else:
         break
-    logging.debug("Tree generated (level -> nodes): %s", self.tree)
+    # logging.debug("Tree generated (level -> nodes): %s", self.tree)
 
-    logging.debug("Starting to collect the leaves of the tree.")
+    # logging.debug("Starting to collect the leaves of the tree.")
     self.leaves = []
     for level_idx in self.tree:
       # # todo: debug
@@ -183,7 +183,7 @@ class LshTree():
       # new_leaves = list(filter(self.is_leaf, self.tree[level_idx]))
       # print(f"---> new leave counts: {[l.private_count for l in new_leaves]}")
       self.leaves.extend(list(filter(self.is_leaf, self.tree[level_idx])))
-    logging.debug("Found %s leaves: %s", len(self.leaves), self.leaves)
+    # logging.debug("Found %s leaves: %s", len(self.leaves), self.leaves)
 
   def is_leaf(self, node: LshTreeNode) -> bool:
     """Returns whether the node is a leaf.

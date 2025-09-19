@@ -13,7 +13,7 @@ import concurrent.futures
 import pickle
 
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
+# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 def gen_fm_sketch(mset, seed, gamma):
     p = gamma / (1 + gamma)
@@ -45,7 +45,8 @@ def set_k_p_min(epsilon, delta, m, gamma):
 
 def gen_priv_fm_sketch(mset, seed, gamma, k_p, alpha_min):
     alpha_D = gen_fm_sketch(mset, seed, gamma)
-    alpha_p = np.max(np.random.geometric(gamma/(1+gamma), size=int(k_p)))
+    random_state = np.random.default_rng(seed)
+    alpha_p = np.max(random_state.geometric(gamma/(1+gamma), size=int(k_p)))
     return np.maximum(np.maximum(alpha_D, alpha_p), alpha_min)
 
 
@@ -75,24 +76,30 @@ def one_round_intersection_alpha(splits, seed, gamma, priv_config):
     return [np.max(c) for c in cartesian]
 
 
-def intersection_ca(n, splits, m, gamma, priv_config=None, multithreads=1):
+def intersection_ca(n, splits, m, gamma, priv_config=None, multithreads=1, random_state=None):
+    if random_state is None:
+        random_state = np.random.default_rng()
+    elif isinstance(random_state, int):
+        random_state = np.random.default_rng(random_state)
+    elif not isinstance(random_state, np.random.Generator):
+        raise ValueError("random_state must be an integer, np.random.Generator or None.")
     assert multithreads >= 1
     if (not priv_config is None) :
         assert 'eps' in priv_config and 'delta' in priv_config
         if not 'm' in priv_config:
             priv_config['m'] = m
-    seeds = np.random.randint(0, high=100000, size=m)
-    num_intersections = np.product([len(s) for s in splits])
+    seeds = random_state.integers(0, high=100000, size=m)
+    num_intersections = np.prod([len(s) for s in splits])
     all_sketches = np.zeros(shape=(m, num_intersections))
     start_time = time.time()
     if multithreads == 1:
         for idx, seed in enumerate(seeds):
             if idx % 500 == 0 and idx > 0:
                 seconds = time.time() - start_time
-                print("iteration:", idx, "time", seconds)
+                # print("iteration:", idx, "time", seconds)
             all_sketches[idx] = one_round_intersection_alpha(splits, seed, gamma, priv_config)
     else:
-        logging.info(f"multithreading, # of threads {multithreads}")
+        # logging.info(f"multithreading, # of threads {multithreads}")
         with concurrent.futures.ProcessPoolExecutor(max_workers=multithreads) as executor:
             future_to_seed_idx = {executor.submit(one_round_intersection_alpha,
                                                   splits,
@@ -104,14 +111,14 @@ def intersection_ca(n, splits, m, gamma, priv_config=None, multithreads=1):
                 try:
                     all_sketches[idx] = future.result()
                 except Exception as exc:
-                    print(f"Execption when running {idx}-th seed {seeds[idx]}: {exc}")
+                    # print(f"Execption when running {idx}-th seed {seeds[idx]}: {exc}")
         seconds = time.time() - start_time
-        print("multithreading, run time", seconds)
+        # print("multithreading, run time", seconds)
 
     debias = 0.7213 / (1 + 1.079 / m)
     if priv_config is None:
         estimate = n - m / np.sum(np.power(1 + gamma, -all_sketches), axis=0) * debias
-        print(f"estimate: {estimate}")
+        # print(f"estimate: {estimate}")
     else:
         epsilon, delta = priv_config['eps'], priv_config['delta']
         c = len(splits) * (len(splits[0]) - 1)
@@ -137,25 +144,31 @@ def get_one_set_local_sketches(splits, seed, gamma, priv_config):
             sketches[i][j] = local_sketch
     return sketches
 
-def get_one_n_two_way_intersection_est(n, splits, m, gamma, priv_config=None, multithreads=1):
+def get_one_n_two_way_intersection_est(n, splits, m, gamma, priv_config=None, multithreads=1, random_state=None):
+    if random_state is None:
+        random_state = np.random.default_rng()
+    elif isinstance(random_state, int):
+        random_state = np.random.default_rng(random_state)
+    elif not isinstance(random_state, np.random.Generator):
+        raise ValueError("random_state must be an integer, np.random.Generator or None.")
     assert multithreads >= 1
     if (not priv_config is None):
         assert 'eps' in priv_config and 'delta' in priv_config
         if not 'm' in priv_config:
             priv_config['m'] = m
-    seeds = np.random.randint(0, high=100000, size=m)
+    seeds = random_state.integers(0, high=100000, size=m)
     all_one_way_sketches = [np.zeros(shape=(m, len(s))) for s in splits]
     start_time = time.time()
     if multithreads == 1:
         for idx, seed in enumerate(seeds):
             if idx % 500 == 0 and idx > 0:
                 seconds = time.time() - start_time
-                print("iteration:", idx, "time", seconds)
+                # print("iteration:", idx, "time", seconds)
             new_one_way_sketches = get_one_set_local_sketches(splits, seed, gamma, priv_config)
             for party, sketch in enumerate(new_one_way_sketches):
                 all_one_way_sketches[party][idx] = sketch
     else:
-        logging.info(f"multithreading, # of threads {multithreads}")
+        # logging.info(f"multithreading, # of threads {multithreads}")
         with concurrent.futures.ProcessPoolExecutor(max_workers=multithreads) as executor:
             future_to_seed_idx = {executor.submit(get_one_set_local_sketches,
                                                   splits,
@@ -169,9 +182,9 @@ def get_one_n_two_way_intersection_est(n, splits, m, gamma, priv_config=None, mu
                     for party, sketch in enumerate(new_one_way_sketches):
                         all_one_way_sketches[party][idx] = sketch
                 except Exception as exc:
-                    logging.error(f"Execption when running {idx}-th seed {seeds[idx]}: {exc}")
+                    # logging.error(f"Execption when running {idx}-th seed {seeds[idx]}: {exc}")
         seconds = time.time() - start_time
-        print("multithreading, run time", seconds)
+        # print("multithreading, run time", seconds)
 
     # estimate one party's ca
     debias = 0.7213 / (1 + 1.079 / m)
@@ -232,13 +245,13 @@ def clean_ca(splits):
         intersect = combine[0].intersection(*combine[1:])
         clean_intersections.append(intersect)
     clean_ca = [len(s) for s in clean_intersections]
-    print("clean intersection size", clean_ca)
-    print("sum:", np.sum(clean_ca))
+    # print("clean intersection size", clean_ca)
+    # print("sum:", np.sum(clean_ca))
     return clean_ca
 
 if __name__ == '__main__':
     test_different_ca()
-    print("testing FM sketch")
+    # print("testing FM sketch")
     # generate test data
     n = 20000
     k = 4
@@ -258,14 +271,14 @@ if __name__ == '__main__':
         intersect = combine[0].intersection(*combine[1:])
         clean_intersections.append(intersect)
     clean_ca = [len(s) for s in clean_intersections]
-    print("clean intersection size", clean_ca)
-    print("sum:", np.sum(clean_ca))
+    # print("clean intersection size", clean_ca)
+    # print("sum:", np.sum(clean_ca))
     exit()
     repeat = 20
     ests = []
     priv_config = {'eps': 10, 'delta': 1e-5}
     for r in range(repeat):
-        print("--> repeat", r )
+        # print("--> repeat", r )
         # m = 1024
         m = 4096
         gamma = 1.0
@@ -275,7 +288,5 @@ if __name__ == '__main__':
                                    multithreads=10)
         ests.append(estimate)
 
-    print("=== max:", np.max(ests, axis=0), "min:", np.min(ests, axis=0))
-    print("=== avg:", np.average(ests, axis=0))
-
-
+    # print("=== max:", np.max(ests, axis=0), "min:", np.min(ests, axis=0))
+    # print("=== avg:", np.average(ests, axis=0))
