@@ -42,14 +42,10 @@ models_dict = {
         CoresetKMeans,
         dict(),
         dict(
-            coreset_size_div=optuna.distributions.IntDistribution(5, 20),
-            alpha=optuna.distributions.FloatDistribution(1.0, 5.0),
             kmeans_n_clusters=optuna.distributions.IntDistribution(2, 30),
         ),
         [
             dict(
-                coreset_size_div=10,
-                alpha=2.0,
                 kmeans_n_clusters=8,
             )
         ],
@@ -59,14 +55,10 @@ models_dict = {
         dict(mode='v2way'),
         dict(
             n_clusters=optuna.distributions.IntDistribution(2, 30),
-            m_div=optuna.distributions.IntDistribution(5, 20),
-            eps=optuna.distributions.FloatDistribution(0.1, 5.0),
         ),
         [
             dict(
                 n_clusters=8,
-                m_div=10,
-                eps=0.5,
             )
         ],
 	),
@@ -75,14 +67,10 @@ models_dict = {
         dict(mode='vpc'),
         dict(
             n_clusters=optuna.distributions.IntDistribution(2, 30),
-            m_div=optuna.distributions.IntDistribution(5, 20),
-            eps=optuna.distributions.FloatDistribution(0.1, 5.0),
         ),
         [
             dict(
                 n_clusters=8,
-                m_div=10,
-                eps=0.5,
             )
         ],
     ),
