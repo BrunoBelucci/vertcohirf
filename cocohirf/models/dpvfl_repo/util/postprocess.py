@@ -19,7 +19,7 @@ def norm_sub(estimates: np.array, n: int):
     if not np.any(estimates):
         # if all zeros, then assign average to all
         return np.ones(len(estimates)) * (n / len(estimates))
-    print(f"before normsub- min:{np.min(estimates)}, max: {np.max(estimates)}, sum: {np.sum(estimates)}")
+    # print(f"before normsub- min:{np.min(estimates)}, max: {np.max(estimates)}, sum: {np.sum(estimates)}")
     adjusted_estimates = copy.deepcopy(estimates)
     sorted_estimates = -np.sort(-estimates)
     cumsum = np.cumsum(sorted_estimates)

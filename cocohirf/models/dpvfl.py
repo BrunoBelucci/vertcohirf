@@ -4,6 +4,7 @@ import numpy as np
 from .dpvfl_repo.solutions.V2way import V2way
 from .dpvfl_repo.solutions.VPrivClustering import VPrivClustering
 from typing import Literal
+from sklearn.preprocessing import MinMaxScaler
 
 # The code comes from https://anonymous.4open.science/r/public_vflclustering-63CD mentioned in "Differentially Private Vertical Federated Clustering"
 
@@ -12,20 +13,25 @@ class DPVFL(ClusterMixin, BaseEstimator):
     def __init__(
         self,
         n_clusters: int = 8,  # k
-        m_div: int = 10,
-        eps: float = 0.5,
+        coreset_size_div: int = 10,
+        eps: float = 1.0,
         intersection_method: str = 'fmsketch',
         random_state: int | None = None,
         local_solver: str = 'lsh_clustering',
-        mode: Literal['v2way', 'vpc'] = 'v2way'
+        mode: Literal['v2way', 'vpc'] = 'v2way',
+        use_server_labels: bool = False,  # if True, use the server labels, if False use local labels of each agent
+        # we have adapted the original code to be able to map the original samples to its cluster center in the server
+        use_clean_solver: bool = False,  # if True, use the clean solver to refine the final result
     ):
         self.n_clusters = n_clusters
-        self.m_div = m_div
+        self.coreset_size_div = coreset_size_div
         self.eps = eps
         self.intersection_method = intersection_method
         self.random_state = random_state
         self.local_solver = local_solver
         self.mode = mode
+        self.use_server_labels = use_server_labels
+        self.use_clean_solver = use_clean_solver
 
     def fit( # type: ignore
         self,
@@ -43,7 +49,7 @@ class DPVFL(ClusterMixin, BaseEstimator):
         # seems like d is not used
         config = {
             'k': self.n_clusters,
-            'm': n_samples // self.m_div,
+            'm': n_samples // self.coreset_size_div,
             'T': n_agents,
             'eps': self.eps,
             'intersection_method': self.intersection_method,
@@ -59,19 +65,26 @@ class DPVFL(ClusterMixin, BaseEstimator):
         else:
             raise ValueError(f"Unknown mode: {self.mode}")
         model = model_cls(config=config, tag=self.mode)
+        # rescale data to [-1, 1] because internally dpvfl clips it to this range (apparentlyu because of the privacy using laplace noise)
+        scaler = MinMaxScaler(feature_range=(-1, 1))
+        X = scaler.fit_transform(X)
         data = [X[:, features] for features in features_groups]
         # I am not sure if we should use final_solver or clearn_final_solver
-        final_solver = model.fit(data, run_clean=True)
-        clusters_centers = final_solver.cluster_centers_
-        labels = []
-        for i in range(n_agents):
-            X_group = X[:, features_groups[i]]
-            dist = [
-                np.linalg.norm(X_group - clusters_centers[j][features_groups[i]], axis=1)
-                for j in range(self.n_clusters)
-            ]
-            dist = np.asarray(dist).T
-            labels.append(np.argmin(dist, axis=1))
+        final_solver = model.fit(data, run_clean=self.use_clean_solver)
+        if self.use_server_labels:
+            indices = model.sample_to_grid_indices
+            labels = final_solver.labels_[indices]
+        else:
+            clusters_centers = final_solver.cluster_centers_
+            labels = []
+            for i in range(n_agents):
+                X_group = X[:, features_groups[i]]
+                dist = [
+                    np.linalg.norm(X_group - clusters_centers[j][features_groups[i]], axis=1)
+                    for j in range(self.n_clusters)
+                ]
+                dist = np.asarray(dist).T
+                labels.append(np.argmin(dist, axis=1))
         self.labels_ = labels
         return self
 

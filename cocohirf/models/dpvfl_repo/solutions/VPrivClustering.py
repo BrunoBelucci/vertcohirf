@@ -107,13 +107,14 @@ class VPrivClustering(VBase):
             membership = self.clean_membership(subset_data, centers[idx])
             clean_memberships.append(membership)
 
-        grids, intersection_counts, clean_intersection_counts = self.build_weighted_grids(n,
+        grids, intersection_counts, clean_intersection_counts, sample_to_grid_indices = self.build_weighted_grids(n,
                                                                                           data,
                                                                                           centers,
                                                                                           clean_memberships,
                                                                                           local_eps,
                                                                                           local_k,
                                                                                           run_clean)
+        self.sample_to_grid_indices = sample_to_grid_indices
 
         # logging.info(f"# of grid nodes: {len(grids)}; # of intersections: {len(intersection_counts)}")
         # logging.info(f"intersection sizes: {intersection_counts}")
@@ -136,6 +137,7 @@ class VPrivClustering(VBase):
 
             loss = eval_centers(data, final_solver.cluster_centers_)
             self.centers = final_solver.cluster_centers_
+            self.final_solver = final_solver
 
         self.private_intersections = intersection_counts
         losses = {"private_final_loss": loss}
@@ -152,6 +154,8 @@ class VPrivClustering(VBase):
             if 'label_score' in self.config:
                 # print(self.config['label_score'], self.config['label_score'] == True)
                 losses['homogeneity'], losses['completeness'] = eval_homogeneity_score(data, self.centers, true_labels)
+            self.clean_final_solver = clean_final_solver
+            return clean_final_solver
 
         # self.save_results(losses)
         return final_solver
@@ -159,6 +163,34 @@ class VPrivClustering(VBase):
     def build_weighted_grids(self, n, data, centers, clean_memberships, eps, local_k, run_clean):
         memberships = []
         parties = self.config['T']
+
+        ####### MODIFIED HERE #######
+        cartesian_labels = list(itertools.product(*[list(range(len(c))) for c in centers]))
+        cartesian_labels = np.array(cartesian_labels)
+
+        # Initialize labels matrix
+        labels_matrix = np.full((parties, len(data[0])), -1, dtype=int)  # -1 for unassigned
+
+        # Vectorized assignment for all parties at once
+        for party_idx in range(parties):
+            for cluster_idx, membership_set in enumerate(clean_memberships[party_idx]):
+                if membership_set:  # if not empty
+                    sample_indices = np.array(list(membership_set))
+                    labels_matrix[party_idx, sample_indices] = cluster_idx
+
+        labels_matrix = labels_matrix.T  # shape (n_samples, parties)
+        # map each sample to its corresponding grid index in cartesian_labels
+        # Create a view of cartesian_labels for broadcasting
+        cartesian_expanded = cartesian_labels[:, np.newaxis, :]  # shape: (n_grids, 1, n_parties)
+        labels_expanded = labels_matrix[np.newaxis, :, :]  # shape: (1, n_samples, n_parties)
+
+        # Find matches for all samples at once
+        matches = np.all(cartesian_expanded == labels_expanded, axis=2)  # shape: (n_grids, n_samples)
+
+        # Get the grid index for each sample
+        sample_to_grid_indices = np.argmax(matches, axis=0)
+        ####### MODIFIED HERE #######
+
         # cartesian product of the local centers
         # logging.info("generate cartesian product of local centers ...")
         cartesian = list(itertools.product(*centers))
@@ -228,9 +260,9 @@ class VPrivClustering(VBase):
             clean_intersection_counts = np.array([len(s) for s in clean_intersections])
             # logging.info(f"(clean) intersection sizes: {clean_intersection_counts}")
             self.clean_intersections = clean_intersection_counts
-            return grids, intersection_counts, clean_intersection_counts
+            return grids, intersection_counts, clean_intersection_counts, sample_to_grid_indices
         else:
-            return grids, intersection_counts, []
+            return grids, intersection_counts, [], sample_to_grid_indices
 
     def ldp_membership(self, data, centers, eps):
         local_k = len(centers)

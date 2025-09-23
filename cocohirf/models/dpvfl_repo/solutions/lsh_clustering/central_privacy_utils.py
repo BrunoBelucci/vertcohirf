@@ -112,7 +112,7 @@ class CountPrivacyParam(clustering_params.DifferentialPrivacyParam):
 
 
 def get_private_count(nonprivate_count: int,
-                      count_privacy_param: CountPrivacyParam) -> int:
+                      count_privacy_param: CountPrivacyParam, random_state=None) -> int:
   """Computes differentially private count.
 
   Assume that the privacy budget for group count (specified in
@@ -129,4 +129,4 @@ def get_private_count(nonprivate_count: int,
   """
   if count_privacy_param.epsilon == np.inf:
     return nonprivate_count
-  return nonprivate_count + stats.dlaplace.rvs(count_privacy_param.epsilon)
+  return nonprivate_count + stats.dlaplace.rvs(count_privacy_param.epsilon, random_state=random_state)

@@ -111,6 +111,7 @@ def intersection_ca(n, splits, m, gamma, priv_config=None, multithreads=1, rando
                 try:
                     all_sketches[idx] = future.result()
                 except Exception as exc:
+                    pass
                     # print(f"Execption when running {idx}-th seed {seeds[idx]}: {exc}")
         seconds = time.time() - start_time
         # print("multithreading, run time", seconds)
@@ -182,6 +183,7 @@ def get_one_n_two_way_intersection_est(n, splits, m, gamma, priv_config=None, mu
                     for party, sketch in enumerate(new_one_way_sketches):
                         all_one_way_sketches[party][idx] = sketch
                 except Exception as exc:
+                    pass
                     # logging.error(f"Execption when running {idx}-th seed {seeds[idx]}: {exc}")
         seconds = time.time() - start_time
         # print("multithreading, run time", seconds)

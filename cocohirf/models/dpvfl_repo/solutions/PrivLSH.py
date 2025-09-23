@@ -62,7 +62,8 @@ class PrivLSH(VBase):
         # the google's version user gaussian noise for average, here we need to use the Laplace noise
         data_obj = Data(data, radius=1)
         result: ClusteringResult = private_lsh_clustering(self.k, data_obj,
-                                                          privacy_param=DifferentialPrivacyParam(self.eps, delta=1e-6))
+                                                          privacy_param=DifferentialPrivacyParam(self.eps, delta=1e-6),
+                                                          random_state=self.random_state)
         final_loss = eval_centers(data, result.centers)
         # logging.info(f"local kmeans loss: {final_loss}")
         if self.save_result:

@@ -27,7 +27,8 @@ PrivateCount = int
 def default_tree_param(
     k: int, data: clustering_params.Data,
     privacy_param: clustering_params.DifferentialPrivacyParam,
-    privacy_budget_split: clustering_params.PrivacyBudgetSplit
+    privacy_budget_split: clustering_params.PrivacyBudgetSplit,
+    random_state=None,
 ) -> typing.Tuple[clustering_params.TreeParam, PrivateCount]:
   """Heuristic tree param based on the data and number of clusters.
 
@@ -66,7 +67,7 @@ def default_tree_param(
   private_count = central_privacy_utils.get_private_count(
       data.num_points,
       central_privacy_utils.CountPrivacyParam.compute_group_count_privacy_param(
-          privacy_param, privacy_budget_split, max_depth))
+          privacy_param, privacy_budget_split, max_depth), random_state=random_state)
 
   # We can consider the noise as distributed amongst the points that are being
   # summed. The noise has l2-norm roughly sqrt(dimension) * sum_sigma * radius,

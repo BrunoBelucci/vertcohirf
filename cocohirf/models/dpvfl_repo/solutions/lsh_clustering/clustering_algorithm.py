@@ -223,7 +223,7 @@ def private_lsh_clustering(
     if tree_param is None:
         # Saves the private count to re-use for the root node of the tree.
         tree_param, private_count = default_clustering_params.default_tree_param(
-            k, data, privacy_param, privacy_budget_split)
+            k, data, privacy_param, privacy_budget_split, random_state=random_state)
     clustering_param = clustering_params.ClusteringParam(privacy_param,
                                                          privacy_budget_split,
                                                          tree_param,
@@ -281,7 +281,7 @@ def get_private_coreset(
 
     # Root node must have private count >= 1.
     root.private_count = max(1, root.private_count)
-    leaves = lsh_tree.LshTree(root).leaves
+    leaves = lsh_tree.LshTree(root, random_state=random_state).leaves
     coreset_points = []
     coreset_point_weights = []
     # logging.info("extract leaves")

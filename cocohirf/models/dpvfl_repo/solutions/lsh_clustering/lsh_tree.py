@@ -46,10 +46,11 @@ class LshTreeNode():
   private_count: typing.Optional[int] = None
   private_average: typing.Optional[np.ndarray] = dataclasses.field(
       init=False, default=None)
+  random_state: typing.Optional[np.random.Generator] = None
 
   def __post_init__(self):
     if self.private_count is None:
-      self.get_private_count()
+      self.get_private_count(random_state=self.random_state)
 
   def get_private_average(self, random_state) -> np.ndarray:
     """Returns and saves private average of the points in the node.
@@ -70,7 +71,7 @@ class LshTreeNode():
             self.clustering_param), self.sim_hash.dim, random_state)
     return self.private_average
 
-  def get_private_count(self) -> int:
+  def get_private_count(self, random_state=None) -> int:
     """Returns and saves private count of the points in the node."""
     if self.private_count is not None:
       return self.private_count
@@ -82,10 +83,10 @@ class LshTreeNode():
     self.private_count = central_privacy_utils.get_private_count(
         len(self.nonprivate_points),
         central_privacy_utils.CountPrivacyParam.from_clustering_param(
-            self.clustering_param))
+            self.clustering_param), random_state=random_state)
     return self.private_count
 
-  def children(self) -> typing.List["LshTreeNode"]:
+  def children(self, random_state=None) -> typing.List["LshTreeNode"]:
     """Returns the children for this node.
 
     There is a child for every hash_prefix equal to self.hash_prefix with one
@@ -97,7 +98,7 @@ class LshTreeNode():
     return [
         LshTreeNode(self.hash_prefix + next_hash_char,
                     nonprivate_points_with_hash_char, self.clustering_param,
-                    self.sim_hash) for next_hash_char,
+                    self.sim_hash, random_state=random_state) for next_hash_char,
         nonprivate_points_with_hash_char in next_hash_char_to_points.items()
     ]
 
@@ -146,7 +147,7 @@ class LshTree():
   tree: typing.Dict[LevelIndex, LshTreeLevel]
   leaves: LshTreeLeaves
 
-  def __init__(self, root: LshTreeNode):
+  def __init__(self, root: LshTreeNode, random_state=None):
     """Initializes an LshTree with the given root.
 
     Args:
@@ -165,7 +166,7 @@ class LshTree():
       # Branch all the nodes that should be branched
       branching_nodes: NodesToBranch = LshTree.filter_branching_nodes(
           self.tree[level_idx])
-      next_level = LshTree.get_next_level(branching_nodes)
+      next_level = LshTree.get_next_level(branching_nodes, random_state=random_state)
       if next_level:
         level_idx += 1
         self.tree[level_idx] = next_level
@@ -220,7 +221,7 @@ class LshTree():
     return list(filter(enough_points_to_branch, tree_level))
 
 
-  def get_next_level(nodes_to_branch: NodesToBranch) -> LshTreeLevel:
+  def get_next_level(nodes_to_branch: NodesToBranch, random_state=None) -> LshTreeLevel:
     """Returns the next level of the tree based on nodes_to_branch.
 
     Args:
@@ -228,7 +229,7 @@ class LshTree():
     """
     flatten_children = []
     for node in nodes_to_branch:
-      flatten_children.extend(node.children())
+      flatten_children.extend(node.children(random_state=random_state))
 
     def enough_points(node: LshTreeNode):
       tree_param = node.clustering_param.tree_param
