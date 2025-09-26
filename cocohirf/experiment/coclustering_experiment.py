@@ -57,6 +57,7 @@ class CoClusteringExperiment(ClusteringExperiment):
         n_agents: int = 2,
         p_overlap: float = 0.2,
         max_overlap: float = 0.3,
+        features_groups: Optional[list[list[int]]] = None,
         **kwargs
     ):
         """
@@ -70,6 +71,7 @@ class CoClusteringExperiment(ClusteringExperiment):
         self.n_agents = n_agents
         self.p_overlap = p_overlap
         self.max_overlap = max_overlap
+        self.features_groups = features_groups
 
     @property
     def models_dict(self):
@@ -82,12 +84,15 @@ class CoClusteringExperiment(ClusteringExperiment):
         self.parser.add_argument('--n_agents', type=int, default=self.n_agents, help='Number of agents')
         self.parser.add_argument('--p_overlap', type=float, default=self.p_overlap, help='Probability of feature overlap')
         self.parser.add_argument('--max_overlap', type=float, default=self.max_overlap, help='Maximum feature overlap')
+        # I am not sure if this is parsed correctly from command line, need to verify if we are using it
+        self.parser.add_argument('--features_groups', type=list, default=self.features_groups, help='Features groups for each agent')
 
     def _unpack_parser(self):
         args = super()._unpack_parser()
         self.n_agents = args.n_agents
         self.p_overlap = args.p_overlap
         self.max_overlap = args.max_overlap
+        self.features_groups = args.features_groups
         return args
 
     def _get_unique_params(self):
@@ -96,32 +101,42 @@ class CoClusteringExperiment(ClusteringExperiment):
             "n_agents": self.n_agents,
             "p_overlap": self.p_overlap,
             "max_overlap": self.max_overlap,
+            "features_groups": self.features_groups,
         })
         return unique_params
 
-    @profile_time(enable_based_on_attribute="profile_time")
-    @profile_memory(enable_based_on_attribute="profile_memory")
-    def _fit_model(
-        self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: Optional[str] = None, **kwargs
-    ):
+    def _after_load_data(self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: str | None = None, **kwargs):
         n_agents = unique_params["n_agents"]
         p_overlap = unique_params["p_overlap"]
         max_overlap = unique_params["max_overlap"]
+        features_groups = unique_params["features_groups"]
+        X = kwargs["load_data_return"]["X"]
         if "seed_dataset" in combination:
             seed_dataset = combination["seed_dataset"]
         elif "seed_dataset_order" in combination:
             seed_dataset = combination["seed_dataset_order"]
         else:
             raise ValueError("No seed for dataset found in combination")
+        if features_groups is None:
+            features_groups = split_features_with_prob_and_cap(
+                X.shape[1],
+                n_agents=n_agents,
+                p_overlap=p_overlap,
+                max_overlap=max_overlap,
+                rng_seed=seed_dataset,
+            )
+        ret = super()._after_load_data(combination, unique_params, extra_params, mlflow_run_id, **kwargs)
+        ret["features_groups"] = features_groups
+        return ret
+
+    @profile_time(enable_based_on_attribute="profile_time")
+    @profile_memory(enable_based_on_attribute="profile_memory")
+    def _fit_model(
+        self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: Optional[str] = None, **kwargs
+    ):
         model = kwargs["load_model_return"]["model"]
         X = kwargs["load_data_return"]["X"]
-        features_groups = split_features_with_prob_and_cap(
-            X.shape[1],
-            n_agents=n_agents,
-            p_overlap=p_overlap,
-            max_overlap=max_overlap,
-            rng_seed=seed_dataset,
-        )
+        features_groups = kwargs["after_load_data_return"]["features_groups"]
         y_pred = model.fit_predict(X, features_groups=features_groups)
         return {"y_pred": y_pred}
 
