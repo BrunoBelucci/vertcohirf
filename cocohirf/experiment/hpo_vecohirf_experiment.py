@@ -60,6 +60,7 @@ def training_fn_1(
         run_first_stage_id = mlflow_run.data.tags[f"child_run_id_first_stage_agent_{i_agent}"]
         run_first_stage = mlflow.get_run(run_first_stage_id)
         run_trial_id = run_first_stage.data.tags[f"child_run_id_{trial_number}"]
+        trial.set_user_attr("child_run_id", run_trial_id)
     else:
         run_trial_id = None
 
@@ -70,6 +71,7 @@ def training_fn_1(
         # clustering parameters
         model=model,
         model_params=model_params,
+        seed_model=seed_model,
         **clustering_parameters,
         # experiment parameters
         **experiment_parameters,
@@ -79,6 +81,12 @@ def training_fn_1(
     fit_model_return_elapsed_time = results.get("fit_model_return", {}).get("elapsed_time", None)
     keep_results["elapsed_time"] = fit_model_return_elapsed_time
     keep_results["seed_model"] = seed_model
+
+    if mlflow_run_id is not None:
+        log_metrics = keep_results.copy()
+        log_metrics.pop("elapsed_time", None)
+        log_metrics.pop("max_memory_used", None)
+        mlflow.log_metrics(log_metrics, run_id=run_first_stage_id, step=trial.number)
     return keep_results
 
 
@@ -128,6 +136,7 @@ def training_fn_2(
         run_second_stage_id = mlflow_run.data.tags["child_run_id_second_stage"]
         run_second_stage = mlflow.get_run(run_second_stage_id)
         run_trial_id = run_second_stage.data.tags[f"child_run_id_{trial_number}"]
+        trial.set_user_attr("child_run_id", run_trial_id)
     else:
         run_trial_id = None
 
@@ -139,6 +148,7 @@ def training_fn_2(
         # clustering parameters
         model=model,
         model_params=model_params,
+        seed_model=seed_model,
         **clustering_parameters,
         # coclustering parameters
         features_groups=features_groups,
@@ -150,6 +160,12 @@ def training_fn_2(
     fit_model_return_elapsed_time = results.get("fit_model_return", {}).get("elapsed_time", None)
     keep_results["elapsed_time"] = fit_model_return_elapsed_time
     keep_results["seed_model"] = seed_model
+
+    if mlflow_run_id is not None:
+        log_metrics = keep_results.copy()
+        log_metrics.pop("elapsed_time", None)
+        log_metrics.pop("max_memory_used", None)
+        mlflow.log_metrics(log_metrics, run_id=run_second_stage_id, step=trial.number)
     return keep_results
 
 
@@ -178,7 +194,7 @@ def run_2_stage_hpo(
     random_generator: np.random.Generator,
     mlflow_tracking_uri: str | None = None,
     mlflow_run_id: str | None = None,
-) -> Study:
+) -> tuple[list[Study], Study]:
 
     if mlflow_run_id is not None:
         mlflow_client = mlflow.client.MlflowClient(tracking_uri=mlflow_tracking_uri)
@@ -231,6 +247,19 @@ def run_2_stage_hpo(
             # terminate run
             if mlflow_run_id is not None:
                 run_first_stage_id = run_first_stage_ids[i]
+                best_trial = study_1.best_trial
+
+                params_to_log = {f'best/{param}': value for param, value in best_trial.params.items()}
+                best_child_run_id = best_trial.user_attrs.get('child_run_id', None)
+                params_to_log['best/child_run_id'] = best_child_run_id
+                mlflow.log_params(params_to_log, run_id=run_first_stage_id)
+
+                best_trial_result = best_trial.user_attrs.get("result", dict())
+                best_metric_results = {f"best/{metric}": value for metric, value in best_trial_result.items()}
+                best_value = best_trial.value
+                best_metric_results["best/value"] = best_value
+                mlflow.log_metrics(best_metric_results, run_id=run_first_stage_id)
+
                 mlflow_client.set_terminated(run_first_stage_id, status="FINISHED")
                 mlflow_client.set_tag(run_first_stage_id, "raised_exception", "False")
         studies.append(study_1)
@@ -280,9 +309,22 @@ def run_2_stage_hpo(
         raise ValueError(message)
     else:
         if mlflow_run_id is not None:
+            best_trial = study_2.best_trial
+
+            params_to_log = {f'best/{param}': value for param, value in best_trial.params.items()}
+            best_child_run_id = best_trial.user_attrs.get('child_run_id', None)
+            params_to_log['best/child_run_id'] = best_child_run_id
+            mlflow.log_params(params_to_log, run_id=run_second_stage_id)
+
+            best_trial_result = best_trial.user_attrs.get("result", dict())
+            best_metric_results = {f"best/{metric}": value for metric, value in best_trial_result.items()}
+            best_value = best_trial.value
+            best_metric_results["best/value"] = best_value
+            mlflow.log_metrics(best_metric_results, run_id=run_second_stage_id)
+
             mlflow_client.set_terminated(run_second_stage_id, status="FINISHED")
             mlflow_client.set_tag(run_second_stage_id, "raised_exception", "False")
-    return study_2
+    return studies, study_2
 
 
 class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
@@ -544,7 +586,7 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
             verbose=0,
         )
 
-        study_2 = run_2_stage_hpo(
+        studies_1, study_2 = run_2_stage_hpo(
             dataset_parameters=dataset_parameters,
             clustering_parameters=clustering_parameters,
             experiment_parameters=experiment_parameters,
@@ -571,7 +613,7 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
             mlflow_run_id=mlflow_run_id,
         )
 
-        return dict(study=study_2)
+        return dict(studies_1=studies_1, study=study_2)
 
     def _evaluate_model(
         self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: Optional[str] = None, **kwargs
@@ -617,6 +659,7 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
                 run_id = run.info.run_id
                 mlflow_client.set_tag(run_first_stage.info.run_id, f"child_run_id_{trial}", run_id)
                 mlflow_client.set_tag(run_id, "hpo_stage", "1")
+                mlflow_client.set_tag(run_id, "trial_number", trial)
                 mlflow_client.update_run(run_id, status="SCHEDULED")
 
         run_second_stage = mlflow_client.create_run(experiment_id, tags={MLFLOW_PARENT_RUN_ID: parent_run_id})
@@ -628,6 +671,7 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
             run_id = run.info.run_id
             mlflow_client.set_tag(run_second_stage.info.run_id, f"child_run_id_{trial}", run_id)
             mlflow_client.set_tag(run_id, "hpo_stage", "2")
+            mlflow_client.set_tag(run_id, "trial_number", trial)
             mlflow_client.update_run(run_id, status="SCHEDULED")
 
         return parent_run_id
