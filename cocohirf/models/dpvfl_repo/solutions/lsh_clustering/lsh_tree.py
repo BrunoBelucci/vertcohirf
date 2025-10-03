@@ -16,7 +16,6 @@
 import dataclasses
 import typing
 
-from absl import logging
 import numpy as np
 
 from . import central_privacy_utils
