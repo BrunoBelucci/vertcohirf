@@ -4,6 +4,7 @@ from cohirf.experiment.open_ml_clustering_experiment import OpenmlClusteringExpe
 from cocohirf.experiment.tested_models import models_dict
 from ml_experiments.utils import profile_memory, profile_time
 import numpy as np
+import mlflow
 
 
 def split_features_with_prob_and_cap(n_features, n_agents, p_overlap=0.2, max_overlap=0.3, rng_seed=None):
@@ -58,6 +59,7 @@ class CoClusteringExperiment(ClusteringExperiment):
         p_overlap: float = 0.2,
         max_overlap: float = 0.3,
         features_groups: Optional[list[list[int]]] = None,
+        agent_i: Optional[int] = None,
         **kwargs
     ):
         """
@@ -72,6 +74,7 @@ class CoClusteringExperiment(ClusteringExperiment):
         self.p_overlap = p_overlap
         self.max_overlap = max_overlap
         self.features_groups = features_groups
+        self.agent_i = agent_i
 
     @property
     def models_dict(self):
@@ -86,6 +89,7 @@ class CoClusteringExperiment(ClusteringExperiment):
         self.parser.add_argument('--max_overlap', type=float, default=self.max_overlap, help='Maximum feature overlap')
         # I am not sure if this is parsed correctly from command line, need to verify if we are using it
         self.parser.add_argument('--features_groups', type=list, default=self.features_groups, help='Features groups for each agent')
+        self.parser.add_argument('--agent_i', type=int, default=self.agent_i, help='If set, run only the model with partial data for this agent index')
 
     def _unpack_parser(self):
         args = super()._unpack_parser()
@@ -102,6 +106,7 @@ class CoClusteringExperiment(ClusteringExperiment):
             "p_overlap": self.p_overlap,
             "max_overlap": self.max_overlap,
             "features_groups": self.features_groups,
+            "agent_i": self.agent_i,
         })
         return unique_params
 
@@ -127,6 +132,8 @@ class CoClusteringExperiment(ClusteringExperiment):
             )
         ret = super()._after_load_data(combination, unique_params, extra_params, mlflow_run_id, **kwargs)
         ret["features_groups"] = features_groups
+        if mlflow_run_id is not None:
+            mlflow.log_params({"features_groups_": features_groups}, run_id=mlflow_run_id)
         return ret
 
     @profile_time(enable_based_on_attribute="profile_time")
@@ -134,10 +141,14 @@ class CoClusteringExperiment(ClusteringExperiment):
     def _fit_model(
         self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: Optional[str] = None, **kwargs
     ):
+        agent_i = unique_params["agent_i"]
         model = kwargs["load_model_return"]["model"]
         X = kwargs["load_data_return"]["X"]
         features_groups = kwargs["after_load_data_return"]["features_groups"]
-        y_pred = model.fit_predict(X, features_groups=features_groups)
+        if agent_i is None:
+            y_pred = model.fit_predict(X, features_groups=features_groups)
+        else:
+            y_pred = model.fit_predict(X.iloc[:, features_groups[agent_i]])
         return {"y_pred": y_pred}
 
     @profile_time(enable_based_on_attribute="profile_time")
