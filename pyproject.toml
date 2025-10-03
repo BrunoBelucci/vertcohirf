@@ -53,6 +53,7 @@ dependencies = [
     "zarr",
     "graphviz",
     "pytest",
+    "xxhash",
 ]
 
 [project.urls]
