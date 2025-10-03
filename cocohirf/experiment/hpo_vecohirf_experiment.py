@@ -1,6 +1,7 @@
 from typing import Optional
 from abc import ABC, abstractmethod
 from functools import partial
+from copy import deepcopy
 
 import numpy as np
 import optuna
@@ -9,12 +10,15 @@ from optuna import Study, Trial
 import mlflow
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID
 
+from sklearn.base import BaseEstimator
+
 from ml_experiments.base_experiment import BaseExperiment
 from ml_experiments.utils import profile_time, profile_memory, flatten_any, update_recursively, unflatten_any
 from ml_experiments.tuners import OptunaTuner
 
 from cohirf.experiment.clustering_experiment import ClusteringExperiment
 from cocohirf.experiment.coclustering_experiment import CoClusteringExperiment
+from cocohirf.experiment.tested_models import two_stage_models_dict
 
 
 def get_trial_fn(study: Study, search_space: dict, random_generator: np.random.Generator, **kwargs):
@@ -340,7 +344,7 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         *args,
         hpo_framework: str = "optuna",
         # general
-        n_trials_1: int = 30,
+        n_trials_1: int = 50,
         n_trials_2: int = 30,
         timeout_hpo_1: int = 0,
         timeout_hpo_2: int = 0,
@@ -354,18 +358,19 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         sampler_2: str = "tpe",
         pruner_1: str = "none",
         pruner_2: str = "none",
-        direction_1: str = "minimize",
-        direction_2: str = "minimize",
-        hpo_metric_1: str = "validation_score",
-        hpo_metric_2: str = "validation_score",
+        hpo_metric_1: str = "adjusted_rand",
+        hpo_metric_2: str = "adjusted_rand_mean",
+        direction_1: str = "maximize",
+        direction_2: str = "maximize",
+        model: Optional[str] = None,  # model alias to load from tested_models
+        model_1: Optional[BaseEstimator | type[BaseEstimator]] = None,
+        model_2: Optional[BaseEstimator | type[BaseEstimator]] = None,
+        model_params_1: Optional[dict] = None,
+        model_params_2: Optional[dict] = None,
         search_space_1: Optional[dict] = None,
         search_space_2: Optional[dict] = None,
         default_values_1: Optional[list] = None,
         default_values_2: Optional[list] = None,
-        model_1: str = "BaseCoHiRF",
-        model_2: str = "VeCoHiRF",
-        model_params_1: Optional[dict] = None,
-        model_params_2: Optional[dict] = None,
         n_top_trials: int = 5,
         **kwargs,
     ):
@@ -398,6 +403,7 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         self.model_2 = model_2
         self.model_params_1 = model_params_1 if model_params_1 is not None else {}
         self.model_params_2 = model_params_2 if model_params_2 is not None else {}
+        self.model = model
         self.n_top_trials = n_top_trials
 
     def __init_subclass__(cls, **kwargs):
@@ -429,6 +435,8 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         self.parser.add_argument('--direction_2', type=str, default=self.direction_2)
         self.parser.add_argument('--hpo_metric_1', type=str, default=self.hpo_metric_1)
         self.parser.add_argument('--hpo_metric_2', type=str, default=self.hpo_metric_2)
+        self.parser.add_argument('--model', type=str, default=self.model)
+        self.parser.add_argument('--n_top_trials', type=int, default=self.n_top_trials)
 
     def _unpack_parser(self):
         args = super()._unpack_parser()
@@ -452,6 +460,8 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         self.direction_2 = args.direction_2
         self.hpo_metric_1 = args.hpo_metric_1
         self.hpo_metric_2 = args.hpo_metric_2
+        self.model = args.model
+        self.n_top_trials = args.n_top_trials
         return args
 
     def _get_unique_params(self):
@@ -476,9 +486,15 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
                 "direction_2": self.direction_2,
                 "hpo_metric_1": self.hpo_metric_1,
                 "hpo_metric_2": self.hpo_metric_2,
+                "model": self.model,
+                "n_top_trials": self.n_top_trials,
             }
         )
         return unique_params
+
+    @property
+    def models_dict(self):
+        return two_stage_models_dict.copy()
 
     def _before_fit_model(
         self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: str | None = None, **kwargs
@@ -492,6 +508,32 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
     def _load_model(
         self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: Optional[str] = None, **kwargs
     ):
+        model = unique_params["model"]
+
+        if isinstance(model, str):
+            model_dict = deepcopy(self.models_dict[model])
+            model_1 = model_dict["model_1"]
+            model_params_1 = model_dict["model_params_1"]
+            model_params_1 = update_recursively(model_params_1, self.model_params_1)
+            search_space_1 = model_dict["search_space_1"]
+            default_values_1 = model_dict["default_values_1"]
+            model_2 = model_dict["model_2"]
+            model_params_2 = model_dict["model_params_2"]
+            model_params_2 = update_recursively(model_params_2, self.model_params_2)
+            search_space_2 = model_dict["search_space_2"]
+            default_values_2 = model_dict["default_values_2"]
+        else:
+            if self.model_1 is None or self.model_2 is None or self.search_space_1 is None or self.search_space_2 is None:
+                raise ValueError("If model is not a string, model_1, model_2, search_space_1 and search_space_2 must be provided")
+            model_1 = self.model_1
+            model_params_1 = self.model_params_1
+            search_space_1 = self.search_space_1
+            default_values_1 = self.default_values_1 if self.default_values_1 is not None else []
+            model_2 = self.model_2
+            model_params_2 = self.model_params_2
+            search_space_2 = self.search_space_2
+            default_values_2 = self.default_values_2 if self.default_values_2 is not None else []
+
         tunner_1 = OptunaTuner(
             sampler=self.sampler_1,
             pruner=self.pruner_1,
@@ -509,7 +551,10 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
             timeout_trial=self.timeout_trial_2,
             seed=self.hpo_seed,
         )
-        return dict(tunner_1=tunner_1, tunner_2=tunner_2)
+
+        return dict(model_1=model_1, model_params_1=model_params_1, search_space_1=search_space_1, default_values_1=default_values_1,
+                    model_2=model_2, model_params_2=model_params_2, search_space_2=search_space_2, default_values_2=default_values_2,
+                    tunner_1=tunner_1, tunner_2=tunner_2)
 
     @abstractmethod
     def get_dataset_parameters(
@@ -543,6 +588,14 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
     def _fit_model(
         self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: Optional[str] = None, **kwargs
     ):
+        model_1 = kwargs["load_model_return"]["model_1"]
+        model_params_1 = kwargs["load_model_return"]["model_params_1"]
+        search_space_1 = kwargs["load_model_return"]["search_space_1"]
+        default_values_1 = kwargs["load_model_return"]["default_values_1"]
+        model_2 = kwargs["load_model_return"]["model_2"]
+        model_params_2 = kwargs["load_model_return"]["model_params_2"]
+        search_space_2 = kwargs["load_model_return"]["search_space_2"]
+        default_values_2 = kwargs["load_model_return"]["default_values_2"]
         tunner_1 = kwargs["load_model_return"]["tunner_1"]
         tunner_2 = kwargs["load_model_return"]["tunner_2"]
 
@@ -594,14 +647,14 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
             stage_2_experiment=stage_2_experiment,
             tunner_1=tunner_1,
             tunner_2=tunner_2,
-            model_1=self.model_1,
-            model_2=self.model_2,
-            model_params_1=self.model_params_1,
-            model_params_2=self.model_params_2,
-            search_space_1=self.search_space_1,
-            search_space_2=self.search_space_2,
-            default_values_1=self.default_values_1,
-            default_values_2=self.default_values_2,
+            model_1=model_1,
+            model_2=model_2,
+            model_params_1=model_params_1,
+            model_params_2=model_params_2,
+            search_space_1=search_space_1,
+            search_space_2=search_space_2,
+            default_values_1=default_values_1,
+            default_values_2=default_values_2,
             n_top_trials=self.n_top_trials,
             metric_1=self.hpo_metric_1,
             metric_2=self.hpo_metric_2,

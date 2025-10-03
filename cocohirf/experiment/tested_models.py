@@ -1,4 +1,7 @@
+from cohirf.experiment.open_ml_clustering_experiment import models_dict as cluster_models_dict
 from cohirf.models.vecohirf import VeCoHiRF
+from cohirf.models.cohirf import BaseCoHiRF
+from sklearn.cluster import KMeans
 import optuna
 from cocohirf.models.coreset_kmeans import CoresetKMeans
 from cocohirf.models.distributed_kmeans import DistributedKMeans
@@ -6,29 +9,21 @@ from cocohirf.models.dpvfl import DPVFL
 
 
 models_dict = {
-    VeCoHiRF.__name__: (
-        VeCoHiRF,
-        dict(),
-        dict(
-            cohirf_kwargs=dict(
-                n_features=optuna.distributions.FloatDistribution(0.1, 0.6),
-                repetitions=optuna.distributions.IntDistribution(2, 10),
-                kmeans_n_clusters=optuna.distributions.IntDistribution(2, 5),
-            )
-        ),
-        [
-            dict(
-                cohirf_kwargs=dict(
-                    n_features=0.3,
-                    repetitions=5,
-                    kmeans_n_clusters=3,
-                )
-            )
-        ],
-    ),
     DistributedKMeans.__name__: (
         DistributedKMeans,
         dict(),
+        dict(
+            kmeans_n_clusters=optuna.distributions.IntDistribution(2, 30),
+        ),
+        [
+            dict(
+                kmeans_n_clusters=8,
+            )
+        ],
+    ),
+    DistributedKMeans.__name__ + "Local": (
+        DistributedKMeans,
+        dict(use_server_labels=False),
         dict(
             kmeans_n_clusters=optuna.distributions.IntDistribution(2, 30),
         ),
@@ -50,21 +45,9 @@ models_dict = {
             )
         ],
     ),
-	"V2way": (
+    "V2way": (
         DPVFL,
-        dict(mode='v2way'),
-        dict(
-            n_clusters=optuna.distributions.IntDistribution(2, 30),
-        ),
-        [
-            dict(
-                n_clusters=8,
-            )
-        ],
-	),
-	"VPC": (
-        DPVFL,
-        dict(mode='vpc'),
+        dict(mode="v2way"),
         dict(
             n_clusters=optuna.distributions.IntDistribution(2, 30),
         ),
@@ -74,4 +57,53 @@ models_dict = {
             )
         ],
     ),
+    "VPC": (
+        DPVFL,
+        dict(mode="vpc"),
+        dict(
+            n_clusters=optuna.distributions.IntDistribution(2, 30),
+        ),
+        [
+            dict(
+                n_clusters=8,
+            )
+        ],
+    ),
+}
+
+# Add clustering models from cohirf
+models_dict.update(cluster_models_dict)
+
+two_stage_models_dict = {
+    VeCoHiRF.__name__: dict(
+        model_1=BaseCoHiRF,
+        model_params_1=dict(
+            cohirf_kwargs=dict(base_model=KMeans),
+        ),
+        search_space_1=dict(
+            n_features=optuna.distributions.FloatDistribution(0.1, 1.0),
+            repetitions=optuna.distributions.IntDistribution(2, 10),
+            base_model_kwargs=dict(
+                n_clusters=optuna.distributions.IntDistribution(2, 30),
+            ),
+        ),
+        default_values_1=[
+            dict(
+                n_features=0.6,
+                repetitions=5,
+                base_model_kwargs=dict(
+                    n_clusters=3,
+                ),
+            )
+        ],
+        model_2=VeCoHiRF,
+        model_params_2=dict(
+            cohirf_model=BaseCoHiRF,
+            cohirf_kwargs_shared=dict(),
+        ),
+        search_space_2=dict(
+            cohirf_kwargs_shared=dict(random_state=optuna.distributions.IntDistribution(0, int(1e6))),
+        ),
+        default_values_2=[],
+    )
 }
