@@ -103,8 +103,9 @@ class DistributedKMeans(ClusterMixin, BaseEstimator):
         n_agents = len(features_groups)
         results_i = Parallel(n_jobs=self.n_jobs)(delayed(self.run_local_kmeans)(X, r) for r in range(n_agents))
         server_X, server_weight, indices = self.aggregate_data(results_i, X, features_groups, sample_weight)
+        server_n_clusters = min(self.kmeans_n_clusters, server_X.shape[0])
         server_kmeans = KMeans(
-            n_clusters=self.kmeans_n_clusters,
+            n_clusters=server_n_clusters,
             init=self.kmeans_init,
             n_init=self.kmeans_n_init,
             max_iter=self.kmeans_max_iter,
@@ -123,7 +124,7 @@ class DistributedKMeans(ClusterMixin, BaseEstimator):
                 X_group = X[:, features_groups[i]]
                 dist = [
                     np.linalg.norm(X_group - server_kmeans_clusters_centers[j][features_groups[i]], axis=1)
-                    for j in range(self.kmeans_n_clusters)
+                    for j in range(server_n_clusters)
                 ]
                 dist = np.asarray(dist).T
                 labels.append(np.argmin(dist, axis=1))
