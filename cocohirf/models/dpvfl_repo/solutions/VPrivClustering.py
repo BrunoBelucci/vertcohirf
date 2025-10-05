@@ -196,7 +196,7 @@ class VPrivClustering(VBase):
         cartesian = list(itertools.product(*centers))
         grids = []
         for combine in cartesian:
-            grids.append(np.array(list(combine)).flatten())
+            grids.append(np.concatenate(list(combine)))
 
         if self.intersection_method in ['noisymin', 'ldp']:
             # generate private memberships with noisymin or grr/olh
