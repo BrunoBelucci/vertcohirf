@@ -25,3 +25,8 @@ class HPOOpenmlVeCoHiRFExperiment(HPOVeCoHiRFExperiment, OpenmlCoClusteringExper
             standardize=standardize,
         )
         return dataset_parameters
+
+
+if __name__ == "__main__":
+    experiment = HPOOpenmlVeCoHiRFExperiment()
+    experiment.run_from_cli()
