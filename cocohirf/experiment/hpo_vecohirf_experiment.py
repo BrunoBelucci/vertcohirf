@@ -362,7 +362,7 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         hpo_metric_2: str = "adjusted_rand_mean",
         direction_1: str = "maximize",
         direction_2: str = "maximize",
-        model: Optional[str] = None,  # model alias to load from tested_models
+        model_alias: Optional[str] = None,  # model alias to load from tested_models
         model_1: Optional[BaseEstimator | type[BaseEstimator]] = None,
         model_2: Optional[BaseEstimator | type[BaseEstimator]] = None,
         model_params_1: Optional[dict] = None,
@@ -403,7 +403,7 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         self.model_2 = model_2
         self.model_params_1 = model_params_1 if model_params_1 is not None else {}
         self.model_params_2 = model_params_2 if model_params_2 is not None else {}
-        self.model = model
+        self.model_alias = model_alias
         self.n_top_trials = n_top_trials
 
     def __init_subclass__(cls, **kwargs):
@@ -435,7 +435,7 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         self.parser.add_argument('--direction_2', type=str, default=self.direction_2)
         self.parser.add_argument('--hpo_metric_1', type=str, default=self.hpo_metric_1)
         self.parser.add_argument('--hpo_metric_2', type=str, default=self.hpo_metric_2)
-        self.parser.add_argument('--model', type=str, default=self.model)
+        self.parser.add_argument("--model_alias", type=str, default=self.model_alias)
         self.parser.add_argument('--n_top_trials', type=int, default=self.n_top_trials)
 
     def _unpack_parser(self):
@@ -460,7 +460,7 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         self.direction_2 = args.direction_2
         self.hpo_metric_1 = args.hpo_metric_1
         self.hpo_metric_2 = args.hpo_metric_2
-        self.model = args.model
+        self.model_alias = args.model_alias
         self.n_top_trials = args.n_top_trials
         return args
 
@@ -486,7 +486,7 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
                 "direction_2": self.direction_2,
                 "hpo_metric_1": self.hpo_metric_1,
                 "hpo_metric_2": self.hpo_metric_2,
-                "model": self.model,
+                "model_alias": self.model_alias,
                 "n_top_trials": self.n_top_trials,
             }
         )
@@ -508,7 +508,7 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
     def _load_model(
         self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: Optional[str] = None, **kwargs
     ):
-        model = unique_params["model"]
+        model = unique_params["model_alias"]
 
         if isinstance(model, str):
             model_dict = deepcopy(self.models_dict[model])
