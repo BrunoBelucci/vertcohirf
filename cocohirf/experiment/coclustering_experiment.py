@@ -130,10 +130,12 @@ class CoClusteringExperiment(ClusteringExperiment):
                 max_overlap=max_overlap,
                 rng_seed=seed_dataset,
             )
+        else:
+            # features groups was provided as an input, we log it to mlflow if available
+            if mlflow_run_id is not None:
+                mlflow.log_params({"features_groups_": features_groups}, run_id=mlflow_run_id)
         ret = super()._after_load_data(combination, unique_params, extra_params, mlflow_run_id, **kwargs)
         ret["features_groups"] = features_groups
-        if mlflow_run_id is not None:
-            mlflow.log_params({"features_groups_": features_groups}, run_id=mlflow_run_id)
         return ret
 
     @profile_time(enable_based_on_attribute="profile_time")
