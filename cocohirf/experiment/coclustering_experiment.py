@@ -97,6 +97,7 @@ class CoClusteringExperiment(ClusteringExperiment):
         self.p_overlap = args.p_overlap
         self.max_overlap = args.max_overlap
         self.features_groups = args.features_groups
+        self.agent_i = args.agent_i
         return args
 
     def _get_unique_params(self):

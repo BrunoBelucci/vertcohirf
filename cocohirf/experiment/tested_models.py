@@ -177,7 +177,7 @@ two_stage_models_dict = {
     ),
     VeCoHiRF.__name__
     + "-SC-SRGF": dict(
-        model_1=SpectralSubspaceRandomization,
+        model_1=BaseCoHiRF,
         model_params_1=dict(base_model=SpectralSubspaceRandomization, n_features=1.0),
         search_space_1=dict(
             repetitions=optuna.distributions.IntDistribution(2, 10),
