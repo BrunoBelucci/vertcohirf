@@ -43,7 +43,7 @@ def split_features_with_prob_and_cap(n_features, n_agents, p_overlap=0.2, max_ov
                 continue
             if current_overlap[dst_agent] < max_allowed[dst_agent]:
                 if rng.random() < p_overlap:
-                    agent_features[dst_agent].add(feat)
+                    agent_features[dst_agent].add(feat.item())
                     current_overlap[dst_agent] += 1
 
     # Step 4: Build final list of arrays
@@ -106,16 +106,22 @@ class CoClusteringExperiment(ClusteringExperiment):
             "n_agents": self.n_agents,
             "p_overlap": self.p_overlap,
             "max_overlap": self.max_overlap,
-            "features_groups": self.features_groups,
             "agent_i": self.agent_i,
         })
         return unique_params
+
+    def _get_extra_params(self):
+        extra_params = super()._get_extra_params()
+        extra_params.update({
+            "features_groups": self.features_groups,
+        })
+        return extra_params
 
     def _after_load_data(self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: str | None = None, **kwargs):
         n_agents = unique_params["n_agents"]
         p_overlap = unique_params["p_overlap"]
         max_overlap = unique_params["max_overlap"]
-        features_groups = unique_params["features_groups"]
+        features_groups = extra_params["features_groups"]
         X = kwargs["load_data_return"]["X"]
         if "seed_dataset" in combination:
             seed_dataset = combination["seed_dataset"]
