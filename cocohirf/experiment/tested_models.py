@@ -108,6 +108,36 @@ two_stage_models_dict = {
         ),
         default_values_2=[],
     ),
+    VeCoHiRF.__name__ + "-1iter": dict(
+        model_1=BaseCoHiRF,
+        model_params_1=dict(
+            base_model=KMeans,
+        ),
+        search_space_1=dict(
+            n_features=optuna.distributions.FloatDistribution(0.1, 1.0),
+            repetitions=optuna.distributions.IntDistribution(2, 5),
+            base_model_kwargs=dict(
+                n_clusters=optuna.distributions.IntDistribution(2, 30),
+            ),
+        ),
+        default_values_1=[
+            dict(
+                n_features=0.6,
+                repetitions=5,
+                base_model_kwargs=dict(
+                    n_clusters=3,
+                ),
+            )
+        ],
+        model_2=VeCoHiRF,
+        model_params_2=dict(
+            cohirf_kwargs_shared=dict(max_iter=1),
+        ),
+        search_space_2=dict(
+            cohirf_kwargs_shared=dict(random_state=optuna.distributions.IntDistribution(0, int(1e6))),
+        ),
+        default_values_2=[],
+    ),
     VeCoHiRF.__name__
     + "-DBSCAN": dict(
         model_1=BaseCoHiRF,
