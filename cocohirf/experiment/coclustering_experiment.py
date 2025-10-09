@@ -28,7 +28,7 @@ def split_features_with_prob_and_cap(n_features, n_agents, p_overlap=0.2, max_ov
 
     # Step 1: Base partition
     base_splits = np.array_split(np.arange(n_features), n_agents)
-    agent_features = {i: set(split) for i, split in enumerate(base_splits)}
+    agent_features = {i: set(split.tolist()) for i, split in enumerate(base_splits)}
 
     # Step 2: Track overlap limits
     max_allowed = {i: int(len(split) * max_overlap) for i, split in enumerate(base_splits)}
@@ -43,7 +43,7 @@ def split_features_with_prob_and_cap(n_features, n_agents, p_overlap=0.2, max_ov
                 continue
             if current_overlap[dst_agent] < max_allowed[dst_agent]:
                 if rng.random() < p_overlap:
-                    agent_features[dst_agent].add(feat.item())
+                    agent_features[dst_agent].add(feat)
                     current_overlap[dst_agent] += 1
 
     # Step 4: Build final list of arrays
