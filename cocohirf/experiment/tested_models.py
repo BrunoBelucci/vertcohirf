@@ -1,6 +1,6 @@
 from cohirf.experiment.open_ml_clustering_experiment import models_dict as cluster_models_dict
 from cohirf.models.vecohirf import VeCoHiRF
-from cohirf.models.cohirf import BaseCoHiRF
+from cohirf.models.cohirf import BaseCoHiRF, CoHiRF
 from cohirf.models.scsrgf import SpectralSubspaceRandomization
 from sklearn.cluster import KMeans, DBSCAN
 from sklearn.kernel_approximation import RBFSampler
@@ -8,6 +8,7 @@ import optuna
 from cocohirf.models.coreset_kmeans import CoresetKMeans
 from cocohirf.models.distributed_kmeans import DistributedKMeans
 from cocohirf.models.dpvfl import DPVFL
+from ml_experiments.utils import update_recursively
 
 
 models_dict = {
@@ -75,196 +76,56 @@ models_dict = {
 
 # Add clustering models from cohirf
 models_dict.update(cluster_models_dict)
+two_stage_models_dict = dict()
 
-two_stage_models_dict = {
-    VeCoHiRF.__name__: dict(
-        model_1=BaseCoHiRF,
-        model_params_1=dict(
-            base_model=KMeans,
-        ),
-        search_space_1=dict(
-            n_features=optuna.distributions.FloatDistribution(0.1, 1.0),
-            repetitions=optuna.distributions.IntDistribution(2, 10),
-            base_model_kwargs=dict(
-                n_clusters=optuna.distributions.IntDistribution(2, 30),
-            ),
-        ),
-        default_values_1=[
-            dict(
-                n_features=0.6,
-                repetitions=5,
-                base_model_kwargs=dict(
-                    n_clusters=3,
-                ),
-            )
-        ],
-        model_2=VeCoHiRF,
-        model_params_2=dict(
-            cohirf_model=BaseCoHiRF,
-            cohirf_kwargs_shared=dict(),
-        ),
-        search_space_2=dict(
-            cohirf_kwargs_shared=dict(random_state=optuna.distributions.IntDistribution(0, int(1e6))),
-        ),
-        default_values_2=[],
-    ),
-    VeCoHiRF.__name__
-    + "-1iter-1iter": dict(
-        model_1=BaseCoHiRF,
-        model_params_1=dict(
-            base_model=KMeans,
-			max_iter=1,
-        ),
-        search_space_1=dict(
-            n_features=optuna.distributions.FloatDistribution(0.1, 1.0),
-            repetitions=optuna.distributions.IntDistribution(2, 5),
-            base_model_kwargs=dict(
-                n_clusters=optuna.distributions.IntDistribution(2, 30),
-            ),
-        ),
-        default_values_1=[
-            dict(
-                n_features=0.6,
-                repetitions=5,
-                base_model_kwargs=dict(
-                    n_clusters=3,
-                ),
-            )
-        ],
-        model_2=VeCoHiRF,
-        model_params_2=dict(
-            cohirf_kwargs_shared=dict(max_iter=1),
-        ),
-        search_space_2=dict(
-            cohirf_kwargs_shared=dict(random_state=optuna.distributions.IntDistribution(0, int(1e6))),
-        ),
-        default_values_2=[],
-    ),
-    VeCoHiRF.__name__
-    + "-1iter": dict(
-        model_1=BaseCoHiRF,
-        model_params_1=dict(
-            base_model=KMeans,
-        ),
-        search_space_1=dict(
-            n_features=optuna.distributions.FloatDistribution(0.1, 1.0),
-            repetitions=optuna.distributions.IntDistribution(2, 5),
-            base_model_kwargs=dict(
-                n_clusters=optuna.distributions.IntDistribution(2, 30),
-            ),
-        ),
-        default_values_1=[
-            dict(
-                n_features=0.6,
-                repetitions=5,
-                base_model_kwargs=dict(
-                    n_clusters=3,
-                ),
-            )
-        ],
-        model_2=VeCoHiRF,
-        model_params_2=dict(
-            cohirf_kwargs_shared=dict(max_iter=1),
-        ),
-        search_space_2=dict(
-            cohirf_kwargs_shared=dict(random_state=optuna.distributions.IntDistribution(0, int(1e6))),
-        ),
-        default_values_2=[],
-    ),
-    VeCoHiRF.__name__
-    + "-DBSCAN": dict(
-        model_1=BaseCoHiRF,
-        model_params_1=dict(base_model=DBSCAN),
-        search_space_1=dict(
-            n_features=optuna.distributions.FloatDistribution(0.1, 1),
-            repetitions=optuna.distributions.IntDistribution(1, 10),
-            base_model_kwargs=dict(
-                eps=optuna.distributions.FloatDistribution(1e-1, 10),
-                min_samples=optuna.distributions.IntDistribution(2, 50),
-            ),
-        ),
-        default_values_1=[
-            dict(
-                n_features=0.3,
-                repetitions=5,
-                base_model_kwargs=dict(
-                    eps=0.5,
-                    min_samples=5,
-                ),
-            ),
-        ],
-        model_2=VeCoHiRF,
-        model_params_2=dict(),
-        search_space_2=dict(
-            cohirf_kwargs_shared=dict(random_state=optuna.distributions.IntDistribution(0, int(1e6))),
-        ),
-        default_values_2=[],
-    ),
-    VeCoHiRF.__name__
-    + "-KernelRBF": dict(
-        model_1=BaseCoHiRF,
-        model_params_1=dict(
-            base_model=KMeans,
-            transform_method=RBFSampler,
-            transform_kwargs=dict(n_components=500),
-            representative_method="rbf",
-        ),
-        search_space_1=dict(
-            n_features=optuna.distributions.FloatDistribution(0.1, 1),
-            repetitions=optuna.distributions.IntDistribution(2, 10),
-            base_model_kwargs=dict(
-                n_clusters=optuna.distributions.IntDistribution(2, 5),
-            ),
-            transform_kwargs=dict(
-                gamma=optuna.distributions.FloatDistribution(0.1, 30),
-            ),
-        ),
-        default_values_1=[
-            dict(
-                n_features=0.3,
-                repetitions=5,
-                base_model_kwargs=dict(
-                    n_clusters=3,
-                ),
-                transform_kwargs=dict(
-                    gamma=1.0,
-                ),
-            )
-        ],
-        model_2=VeCoHiRF,
-        model_params_2=dict(),
-        search_space_2=dict(
-            cohirf_kwargs_shared=dict(random_state=optuna.distributions.IntDistribution(0, int(1e6))),
-        ),
-        default_values_2=[],
-    ),
-    VeCoHiRF.__name__
-    + "-SC-SRGF": dict(
-        model_1=BaseCoHiRF,
-        model_params_1=dict(base_model=SpectralSubspaceRandomization, n_features=1.0),
-        search_space_1=dict(
-            repetitions=optuna.distributions.IntDistribution(2, 10),
-            base_model_kwargs=dict(
-                n_similarities=optuna.distributions.IntDistribution(10, 30),
-                sampling_ratio=optuna.distributions.FloatDistribution(0.2, 0.8),
-                sc_n_clusters=optuna.distributions.IntDistribution(2, 5),
-            ),
-        ),
-        default_values_1=[
-            dict(
-                repetitions=5,
-                base_model_kwargs=dict(
-                    n_similarities=20,
-                    sampling_ratio=0.5,
-                    sc_n_clusters=3,
-                ),
-            )
-        ],
-        model_2=VeCoHiRF,
-        model_params_2=dict(),
-        search_space_2=dict(
-            cohirf_kwargs_shared=dict(random_state=optuna.distributions.IntDistribution(0, int(1e6))),
-        ),
-        default_values_2=[],
-    ),
-}
+# create VeCoHiRF versions of CoHiRF models
+cohirf_models = [model_name for model_name in models_dict.keys() if model_name.startswith("CoHiRF")]
+for model_name in cohirf_models:
+    model, model_params, search_space, default_values = models_dict[model_name]
+    model_1 = model
+    model_params_1 = model_params
+    search_space_1 = search_space
+    default_values_1 = default_values
+    if model_name == CoHiRF.__name__:
+        vecohirf_name = VeCoHiRF.__name__
+    else:
+        model_name_without_cohirf = model_name[len(CoHiRF.__name__) + 1 :]
+        vecohirf_name = VeCoHiRF.__name__ + "-" + model_name_without_cohirf
+    model_2 = VeCoHiRF
+    model_params_2 = dict(cohirf_model=model, cohirf_kwargs_shared=dict())
+    search_space_2 = dict(cohirf_kwargs_shared=dict(random_state=optuna.distributions.IntDistribution(0, int(1e6))))
+    default_values_2 = []
+    two_stage_models_dict[vecohirf_name] = dict(
+        model_1=model_1,
+        model_params_1=model_params_1,
+        search_space_1=search_space_1,
+        default_values_1=default_values_1,
+        model_2=model_2,
+        model_params_2=model_params_2,
+        search_space_2=search_space_2,
+        default_values_2=default_values_2,
+    )
+
+# create 1-iteration VeCoHiRF versions of VeCoHiRF models
+vecohirf_models = [model_name for model_name in two_stage_models_dict.keys() if model_name.startswith(VeCoHiRF.__name__)]
+for model_name in vecohirf_models:
+    model_1 = two_stage_models_dict[model_name]["model_1"]
+    model_params_1 = two_stage_models_dict[model_name]["model_params_1"]
+    search_space_1 = two_stage_models_dict[model_name]["search_space_1"]
+    default_values_1 = two_stage_models_dict[model_name]["default_values_1"]
+    model_2 = two_stage_models_dict[model_name]["model_2"]
+    model_params_2 = two_stage_models_dict[model_name]["model_params_2"]
+    search_space_2 = two_stage_models_dict[model_name]["search_space_2"]
+    default_values_2 = two_stage_models_dict[model_name]["default_values_2"]
+    model_params_1 = update_recursively(model_params_1, dict(max_iter=1))
+    model_params_2 = update_recursively(model_params_2, dict(cohirf_kwargs_shared=dict(max_iter=1)))
+    two_stage_models_dict[model_name + "-1iter"] = dict(
+        model_1=model_1,
+        model_params_1=model_params_1,
+        search_space_1=search_space_1,
+        default_values_1=default_values_1,
+        model_2=model_2,
+        model_params_2=model_params_2,
+        search_space_2=search_space_2,
+        default_values_2=default_values_2,
+    )
