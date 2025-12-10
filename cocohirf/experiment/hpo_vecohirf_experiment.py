@@ -19,6 +19,7 @@ from ml_experiments.tuners import OptunaTuner
 from cohirf.experiment.clustering_experiment import ClusteringExperiment
 from cocohirf.experiment.coclustering_experiment import CoClusteringExperiment
 from cocohirf.experiment.tested_models import two_stage_models_dict
+import json
 
 
 def get_trial_fn(study: Study, search_space: dict, random_generator: np.random.Generator, **kwargs):
@@ -437,6 +438,9 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         self.parser.add_argument('--hpo_metric_2', type=str, default=self.hpo_metric_2)
         self.parser.add_argument("--model_alias", type=str, default=self.model_alias)
         self.parser.add_argument('--n_top_trials', type=int, default=self.n_top_trials)
+        self.parser.add_argument('--model_params_1', type=json.loads, default=self.model_params_1, help='Parameters for the model.')
+        self.parser.add_argument('--model_params_2', type=json.loads, default=self.model_params_2, help='Parameters for the model.')
+
 
     def _unpack_parser(self):
         args = super()._unpack_parser()
@@ -462,6 +466,8 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         self.hpo_metric_2 = args.hpo_metric_2
         self.model_alias = args.model_alias
         self.n_top_trials = args.n_top_trials
+        self.model_params_1 = args.model_params_1
+        self.model_params_2 = args.model_params_2
         return args
 
     def _get_unique_params(self):
