@@ -494,6 +494,8 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
                 "hpo_metric_2": self.hpo_metric_2,
                 "model_alias": self.model_alias,
                 "n_top_trials": self.n_top_trials,
+                "model_params_1": self.model_params_1,
+                "model_params_2": self.model_params_2,
             }
         )
         return unique_params
@@ -515,47 +517,60 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: Optional[str] = None, **kwargs
     ):
         model = unique_params["model_alias"]
+        model_params_1 = unique_params["model_params_1"]
+        model_params_2 = unique_params["model_params_2"]
+        sampler_1 = unique_params["sampler_1"]
+        sampler_2 = unique_params["sampler_2"]
+        pruner_1 = unique_params["pruner_1"]
+        pruner_2 = unique_params["pruner_2"]
+        n_trials_1 = unique_params["n_trials_1"]
+        n_trials_2 = unique_params["n_trials_2"]
+        timeout_hpo_1 = unique_params["timeout_hpo_1"]
+        timeout_hpo_2 = unique_params["timeout_hpo_2"]
+        timeout_trial_1 = unique_params["timeout_trial_1"]
+        timeout_trial_2 = unique_params["timeout_trial_2"]
+        max_concurrent_trials_1 = unique_params["max_concurrent_trials_1"]
+        max_concurrent_trials_2 = unique_params["max_concurrent_trials_2"]
+        hpo_seed = unique_params["hpo_seed"]
 
         if isinstance(model, str):
             model_dict = deepcopy(self.models_dict[model])
             model_1 = model_dict["model_1"]
             model_params_1 = model_dict["model_params_1"]
-            model_params_1 = update_recursively(model_params_1, self.model_params_1)
+            model_params_1 = update_recursively(model_params_1, model_params_1)
             search_space_1 = model_dict["search_space_1"]
             default_values_1 = model_dict["default_values_1"]
             model_2 = model_dict["model_2"]
             model_params_2 = model_dict["model_params_2"]
-            model_params_2 = update_recursively(model_params_2, self.model_params_2)
+            model_params_2 = update_recursively(model_params_2, model_params_2)
             search_space_2 = model_dict["search_space_2"]
             default_values_2 = model_dict["default_values_2"]
         else:
             if self.model_1 is None or self.model_2 is None or self.search_space_1 is None or self.search_space_2 is None:
                 raise ValueError("If model is not a string, model_1, model_2, search_space_1 and search_space_2 must be provided")
             model_1 = self.model_1
-            model_params_1 = self.model_params_1
             search_space_1 = self.search_space_1
             default_values_1 = self.default_values_1 if self.default_values_1 is not None else []
             model_2 = self.model_2
-            model_params_2 = self.model_params_2
             search_space_2 = self.search_space_2
             default_values_2 = self.default_values_2 if self.default_values_2 is not None else []
 
         tunner_1 = OptunaTuner(
-            sampler=self.sampler_1,
-            pruner=self.pruner_1,
-            n_trials=self.n_trials_1,
-            timeout_total=self.timeout_hpo_1,
-            timeout_trial=self.timeout_trial_1,
-            seed=self.hpo_seed,
+            sampler=sampler_1,
+            pruner=pruner_1,
+            n_trials=n_trials_1,
+            timeout_total=timeout_hpo_1,
+            timeout_trial=timeout_trial_1,
+            seed=hpo_seed,
         )
 
         tunner_2 = OptunaTuner(
-            sampler=self.sampler_2,
-            pruner=self.pruner_2,
-            n_trials=self.n_trials_2,
-            timeout_total=self.timeout_hpo_2,
-            timeout_trial=self.timeout_trial_2,
-            seed=self.hpo_seed,
+            sampler=sampler_2,
+            pruner=pruner_2,
+            n_trials=n_trials_2,
+            timeout_total=timeout_hpo_2,
+            timeout_trial=timeout_trial_2,
+            seed=hpo_seed,
         )
 
         return dict(model_1=model_1, model_params_1=model_params_1, search_space_1=search_space_1, default_values_1=default_values_1,
