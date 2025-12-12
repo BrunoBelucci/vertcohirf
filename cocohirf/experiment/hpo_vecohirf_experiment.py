@@ -32,9 +32,9 @@ def get_trial_fn(study: Study, search_space: dict, random_generator: np.random.G
 
 def training_fn_1(
     trial: Trial,
-    features: list,
-    i_agent: int,
-    stage_1_experiment: BaseExperiment,
+    features_groups: list,
+    agent_i: int,
+    stage_1_experiment: type[BaseExperiment],
     model,
     model_params,
     dataset_parameters: dict,
@@ -44,12 +44,12 @@ def training_fn_1(
 ):
     model_params = model_params.copy()
 
-    class PartialFeaturesExperiment(stage_1_experiment):
-        def _load_data(self, *args, **kwargs):
-            load_data_return = super()._load_data(*args, **kwargs)
-            X = load_data_return.get("X")
-            load_data_return["X"] = X.iloc[:, features]
-            return load_data_return
+    # class PartialFeaturesExperiment(stage_1_experiment):
+    #     def _load_data(self, *args, **kwargs):
+    #         load_data_return = super()._load_data(*args, **kwargs)
+    #         X = load_data_return.get("X")
+    #         load_data_return["X"] = X.iloc[:, features]
+    #         return load_data_return
 
     trial_number = trial.number
     seed_model = trial.user_attrs["seed_model"]
@@ -62,15 +62,17 @@ def training_fn_1(
 
     if mlflow_run_id is not None:
         mlflow_run = mlflow.get_run(mlflow_run_id)
-        run_first_stage_id = mlflow_run.data.tags[f"child_run_id_first_stage_agent_{i_agent}"]
+        run_first_stage_id = mlflow_run.data.tags[f"child_run_id_first_stage_agent_{agent_i}"]
         run_first_stage = mlflow.get_run(run_first_stage_id)
         run_trial_id = run_first_stage.data.tags[f"child_run_id_{trial_number}"]
         trial.set_user_attr("child_run_id", run_trial_id)
     else:
         run_trial_id = None
 
-    experiment = PartialFeaturesExperiment(
+    experiment = stage_1_experiment(
         mlflow_run_id=run_trial_id,
+        agent_i=agent_i,
+        features_groups=features_groups,
         # dataset parameters
         **dataset_parameters,
         # clustering parameters
@@ -235,12 +237,12 @@ def run_2_stage_hpo(
     get_trial_fn_partial = partial(get_trial_fn, random_generator=random_generator)
 
     studies = []
-    for i, features in enumerate(features_groups):
+    for agent_i in range(len(features_groups)):
         training_fn_1_partial = partial(
             training_fn_1,
-            features=features,
+            features_groups=features_groups,
             mlflow_run_id=mlflow_run_id,
-            i_agent=i,
+            agent_i=agent_i,
             stage_1_experiment=stage_1_experiment,
             model=model_1,
             model_params=model_params_1,
@@ -261,7 +263,7 @@ def run_2_stage_hpo(
             message = f"No best value found for agent {i}, it may be that all trials failed."
             # set as failed all runs of first stage for this agent and subsequent agents
             if mlflow_run_id is not None:
-                for j in range(i, len(features_groups)):
+                for j in range(agent_i, len(features_groups)):
                     run_first_stage_id = run_first_stage_ids[j]
                     mlflow_client.set_terminated(run_first_stage_id, status="FAILED")
                     mlflow_client.set_tag(run_first_stage_id, "raised_exception", "True")
@@ -270,7 +272,7 @@ def run_2_stage_hpo(
         else:
             # terminate run
             if mlflow_run_id is not None:
-                run_first_stage_id = run_first_stage_ids[i]
+                run_first_stage_id = run_first_stage_ids[agent_i]
                 best_trial = study_1.best_trial
 
                 params_to_log = {f'best/{param}': value for param, value in best_trial.params.items()}

@@ -7,7 +7,7 @@ class HPOOpenmlVeCoHiRFExperiment(HPOVeCoHiRFExperiment, OpenmlCoClusteringExper
 
     @property
     def stage_1_experiment(self):
-        return OpenmlClusteringExperiment
+        return OpenmlCoClusteringExperiment
 
     @property
     def stage_2_experiment(self):
