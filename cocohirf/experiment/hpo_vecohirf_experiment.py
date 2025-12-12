@@ -82,7 +82,13 @@ def training_fn_1(
         **experiment_parameters,
     )
     results: dict = experiment.run(return_results=True)[0]
-    keep_results = results.get("evaluate_model_return", {})
+    if not isinstance(results, dict):
+            results = dict()
+        
+    if "evaluate_model_return" not in results:  # maybe we already have the run this run and we are getting the stored run result
+        keep_results = {metric[len("metrics."):]: value for metric, value in results.items() if metric.startswith("metrics.")}
+    else:
+        keep_results = results.get("evaluate_model_return", {})
     fit_model_return_elapsed_time = results.get("fit_model_return", {}).get("elapsed_time", None)
     keep_results["elapsed_time"] = fit_model_return_elapsed_time
     keep_results["seed_model"] = seed_model
@@ -161,7 +167,17 @@ def training_fn_2(
         **experiment_parameters,
     )
     results: dict = experiment.run(return_results=True)[0]
-    keep_results = results.get("evaluate_model_return", {})
+    if not isinstance(results, dict):
+        results = dict()
+
+    if (
+        "evaluate_model_return" not in results
+    ):  # maybe we already have the run this run and we are getting the stored run result
+        keep_results = {
+            metric[len("metrics.") :]: value for metric, value in results.items() if metric.startswith("metrics.")
+        }
+    else:
+        keep_results = results.get("evaluate_model_return", {})
     fit_model_return_elapsed_time = results.get("fit_model_return", {}).get("elapsed_time", None)
     keep_results["elapsed_time"] = fit_model_return_elapsed_time
     keep_results["seed_model"] = seed_model
