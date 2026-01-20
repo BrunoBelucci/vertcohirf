@@ -1,6 +1,5 @@
 from cocohirf.experiment.hpo_vecohirf_experiment import HPOVeCoHiRFExperiment
 from cocohirf.experiment.open_ml_coclustering_experiment import OpenmlCoClusteringExperiment
-from cohirf.experiment.open_ml_clustering_experiment import OpenmlClusteringExperiment
 
 
 class HPOOpenmlVeCoHiRFExperiment(HPOVeCoHiRFExperiment, OpenmlCoClusteringExperiment):

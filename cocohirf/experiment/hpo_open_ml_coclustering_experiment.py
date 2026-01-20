@@ -1,8 +1,5 @@
-from typing import Optional
-import openml
 from cohirf.experiment.hpo_clustering_experiment import HPOClusteringExperiment
 from cocohirf.experiment.open_ml_coclustering_experiment import OpenmlCoClusteringExperiment
-import pandas as pd
 
 
 class HPOOpenmlCoClusteringExperiment(HPOClusteringExperiment, OpenmlCoClusteringExperiment):

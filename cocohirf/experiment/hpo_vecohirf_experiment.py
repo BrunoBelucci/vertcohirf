@@ -111,14 +111,14 @@ def training_fn_2(
     features_groups: list,
     studies: list,
     stage_2_experiment: type[BaseExperiment],
-    model,
-    model_params,
+    vecohirf_model,
+    vecohirf_params,
     dataset_parameters: dict,
     clustering_parameters: dict,
     experiment_parameters: dict,
     mlflow_run_id: str | None = None,
 ):
-    model_params = model_params.copy()
+    vecohirf_params = vecohirf_params.copy()
     trial_number = trial.number
     seed_model = trial.user_attrs["seed_model"]
     trial_model_params = trial.params.copy()
@@ -142,10 +142,10 @@ def training_fn_2(
         cohirf_kwargs.append(best_model_params)
 
     # set model_params
-    model_params = flatten_any(model_params)
-    model_params = update_recursively(model_params, trial_model_params)
-    model_params = unflatten_any(model_params)
-    model_params["cohirf_kwargs"] = cohirf_kwargs
+    vecohirf_params = flatten_any(vecohirf_params)
+    vecohirf_params = update_recursively(vecohirf_params, trial_model_params)
+    vecohirf_params = unflatten_any(vecohirf_params)
+    vecohirf_params["cohirf_kwargs"] = cohirf_kwargs
 
     if mlflow_run_id is not None:
         mlflow_run = mlflow.get_run(mlflow_run_id)
@@ -162,8 +162,8 @@ def training_fn_2(
         # dataset parameters
         **dataset_parameters,
         # clustering parameters
-        model=model,
-        model_params=model_params,
+        model=vecohirf_model,
+        model_params=vecohirf_params,
         seed_model=seed_model,
         **clustering_parameters,
         # coclustering parameters
@@ -199,16 +199,16 @@ def run_2_stage_hpo(
     clustering_parameters: dict,
     experiment_parameters: dict,
     dataset_parameters: dict,
-    model_1,
-    model_2,
-    model_params_1,
-    model_params_2,
+    cohirf_model,
+    vecohirf_model,
+    cohirf_params,
+    vecohirf_params,
     tunner_1: OptunaTuner,
     tunner_2: OptunaTuner,
-    search_space_1: dict,
-    search_space_2: dict,
-    default_values_1: list,
-    default_values_2: list,
+    cohirf_search_space: dict,
+    vecohirf_search_space: dict,
+    cohirf_default_values: list,
+    vecohirf_default_values: list,
     n_top_trials: int,
     metric_1: str,
     metric_2: str,
@@ -238,24 +238,44 @@ def run_2_stage_hpo(
 
     studies = []
     for agent_i in range(len(features_groups)):
+        if isinstance(cohirf_model, list):
+            cohirf_model_agent = cohirf_model[agent_i]
+        else:
+            cohirf_model_agent = cohirf_model
+
+        if isinstance(cohirf_params, list):
+            cohirf_params_agent = cohirf_params[agent_i]
+        else:
+            cohirf_params_agent = cohirf_params
+
+        if isinstance(cohirf_search_space, list):
+            cohirf_search_space_agent = cohirf_search_space[agent_i]
+        else:
+            cohirf_search_space_agent = cohirf_search_space
+
+        if isinstance(cohirf_default_values, list) and len(cohirf_default_values) > 0 and isinstance(cohirf_default_values[0], list):
+            cohirf_default_values_agent = cohirf_default_values[agent_i]
+        else:
+            cohirf_default_values_agent = cohirf_default_values
+
         training_fn_1_partial = partial(
             training_fn_1,
             features_groups=features_groups,
             mlflow_run_id=mlflow_run_id,
             agent_i=agent_i,
             stage_1_experiment=stage_1_experiment,
-            model=model_1,
-            model_params=model_params_1,
+            model=cohirf_model_agent,
+            model_params=cohirf_params_agent,
             dataset_parameters=dataset_parameters,
             clustering_parameters=clustering_parameters,
             experiment_parameters=experiment_parameters,
         )
         study_1 = tunner_1.tune(
             training_fn=training_fn_1_partial,
-            search_space=search_space_1,
+            search_space=cohirf_search_space_agent,
             direction=direction_1,
             metric=metric_1,
-            enqueue_configurations=default_values_1,
+            enqueue_configurations=cohirf_default_values_agent,
             get_trial_fn=get_trial_fn_partial,
         )
         best_value = study_1.best_value
@@ -307,21 +327,21 @@ def run_2_stage_hpo(
         studies=studies,
         stage_2_experiment=stage_2_experiment,
         mlflow_run_id=mlflow_run_id,
-        model=model_2,
-        model_params=model_params_2,
+        vecohirf_model=vecohirf_model,
+        vecohirf_params=vecohirf_params,
         dataset_parameters=dataset_parameters,
         clustering_parameters=clustering_parameters,
         experiment_parameters=experiment_parameters,
     )
 
-    search_space_2.update(top_n_trials)
+    vecohirf_search_space.update(top_n_trials)
 
     study_2 = tunner_2.tune(
         training_fn=training_fn_2_partial,
-        search_space=search_space_2,
+        search_space=vecohirf_search_space,
         direction=direction_2,
         metric=metric_2,
-        enqueue_configurations=default_values_2,
+        enqueue_configurations=vecohirf_default_values,
         get_trial_fn=get_trial_fn_partial,
     )
 
@@ -385,14 +405,14 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         direction_1: str = "maximize",
         direction_2: str = "maximize",
         model_alias: Optional[str] = None,  # model alias to load from tested_models
-        model_1: Optional[BaseEstimator | type[BaseEstimator]] = None,
-        model_2: Optional[BaseEstimator | type[BaseEstimator]] = None,
-        model_params_1: Optional[dict] = None,
-        model_params_2: Optional[dict] = None,
-        search_space_1: Optional[dict] = None,
-        search_space_2: Optional[dict] = None,
-        default_values_1: Optional[list] = None,
-        default_values_2: Optional[list] = None,
+        cohirf_model: Optional[BaseEstimator | type[BaseEstimator] | list] = None,
+        vecohirf_model: Optional[BaseEstimator | type[BaseEstimator]] = None,
+        cohirf_params: Optional[dict | list[dict]] = None,
+        vecohirf_params: Optional[dict] = None,
+        cohirf_search_space: Optional[dict | list[dict]] = None,
+        vecohirf_search_space: Optional[dict] = None,
+        cohirf_default_values: Optional[list | list[list]] = None,
+        vecohirf_default_values: Optional[list] = None,
         n_top_trials: int = 5,
         **kwargs,
     ):
@@ -417,14 +437,14 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         self.direction_2 = direction_2
         self.hpo_metric_1 = hpo_metric_1
         self.hpo_metric_2 = hpo_metric_2
-        self.search_space_1 = search_space_1
-        self.search_space_2 = search_space_2
-        self.default_values_1 = default_values_1
-        self.default_values_2 = default_values_2
-        self.model_1 = model_1
-        self.model_2 = model_2
-        self.model_params_1 = model_params_1 if model_params_1 is not None else {}
-        self.model_params_2 = model_params_2 if model_params_2 is not None else {}
+        self.cohirf_search_space = cohirf_search_space
+        self.vecohirf_search_space = vecohirf_search_space
+        self.cohirf_default_values = cohirf_default_values
+        self.vecohirf_default_values = vecohirf_default_values
+        self.cohirf_model = cohirf_model
+        self.vecohirf_model = vecohirf_model
+        self.cohirf_params = cohirf_params if cohirf_params is not None else {}
+        self.vecohirf_params = vecohirf_params if vecohirf_params is not None else {}
         self.model_alias = model_alias
         self.n_top_trials = n_top_trials
 
@@ -459,9 +479,12 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         self.parser.add_argument('--hpo_metric_2', type=str, default=self.hpo_metric_2)
         self.parser.add_argument("--model_alias", type=str, default=self.model_alias)
         self.parser.add_argument('--n_top_trials', type=int, default=self.n_top_trials)
-        self.parser.add_argument('--model_params_1', type=json.loads, default=self.model_params_1, help='Parameters for the model.')
-        self.parser.add_argument('--model_params_2', type=json.loads, default=self.model_params_2, help='Parameters for the model.')
-
+        self.parser.add_argument(
+            "--cohirf_params", type=json.loads, default=self.cohirf_params, help="Parameters for the model."
+        )
+        self.parser.add_argument(
+            "--vecohirf_params", type=json.loads, default=self.vecohirf_params, help="Parameters for the model."
+        )
 
     def _unpack_parser(self):
         args = super()._unpack_parser()
@@ -487,8 +510,8 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         self.hpo_metric_2 = args.hpo_metric_2
         self.model_alias = args.model_alias
         self.n_top_trials = args.n_top_trials
-        self.model_params_1 = args.model_params_1
-        self.model_params_2 = args.model_params_2
+        self.cohirf_params = args.cohirf_params
+        self.vecohirf_params = args.vecohirf_params
         return args
 
     def _get_unique_params(self):
@@ -515,8 +538,8 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
                 "hpo_metric_2": self.hpo_metric_2,
                 "model_alias": self.model_alias,
                 "n_top_trials": self.n_top_trials,
-                "model_params_1": self.model_params_1,
-                "model_params_2": self.model_params_2,
+                "cohirf_params": self.cohirf_params,
+                "vecohirf_params": self.vecohirf_params,
             }
         )
         return unique_params
@@ -538,8 +561,8 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
         self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: Optional[str] = None, **kwargs
     ):
         model = unique_params["model_alias"]
-        model_params_1 = unique_params["model_params_1"]
-        model_params_2 = unique_params["model_params_2"]
+        cohirf_params = unique_params["cohirf_params"]
+        vecohirf_params = unique_params["vecohirf_params"]
         sampler_1 = unique_params["sampler_1"]
         sampler_2 = unique_params["sampler_2"]
         pruner_1 = unique_params["pruner_1"]
@@ -556,25 +579,25 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
 
         if isinstance(model, str):
             model_dict = deepcopy(self.models_dict[model])
-            model_1 = model_dict["model_1"]
-            model_params_1 = model_dict["model_params_1"]
-            model_params_1 = update_recursively(model_params_1, model_params_1)
-            search_space_1 = model_dict["search_space_1"]
-            default_values_1 = model_dict["default_values_1"]
-            model_2 = model_dict["model_2"]
-            model_params_2 = model_dict["model_params_2"]
-            model_params_2 = update_recursively(model_params_2, model_params_2)
-            search_space_2 = model_dict["search_space_2"]
-            default_values_2 = model_dict["default_values_2"]
+            cohirf_model = model_dict["cohirf_model"]
+            cohirf_params = model_dict["cohirf_params"]
+            cohirf_params = update_recursively(cohirf_params, cohirf_params)
+            cohirf_search_space = model_dict["cohirf_search_space"]
+            cohirf_default_values = model_dict["cohirf_default_values"]
+            vecohirf_model = model_dict["vecohirf_model"]
+            vecohirf_params = model_dict["vecohirf_params"]
+            vecohirf_params = update_recursively(vecohirf_params, vecohirf_params)
+            vecohirf_search_space = model_dict["vecohirf_search_space"]
+            vecohirf_default_values = model_dict["vecohirf_default_values"]
         else:
-            if self.model_1 is None or self.model_2 is None or self.search_space_1 is None or self.search_space_2 is None:
-                raise ValueError("If model is not a string, model_1, model_2, search_space_1 and search_space_2 must be provided")
-            model_1 = self.model_1
-            search_space_1 = self.search_space_1
-            default_values_1 = self.default_values_1 if self.default_values_1 is not None else []
-            model_2 = self.model_2
-            search_space_2 = self.search_space_2
-            default_values_2 = self.default_values_2 if self.default_values_2 is not None else []
+            if self.cohirf_model is None or self.vecohirf_model is None or self.cohirf_search_space is None or self.vecohirf_search_space is None:
+                raise ValueError("If model is not a string, cohirf_model, vecohirf_model, cohirf_search_space and vecohirf_search_space must be provided")
+            cohirf_model = self.cohirf_model
+            cohirf_search_space = self.cohirf_search_space
+            cohirf_default_values = self.cohirf_default_values if self.cohirf_default_values is not None else []
+            vecohirf_model = self.vecohirf_model
+            vecohirf_search_space = self.vecohirf_search_space
+            vecohirf_default_values = self.vecohirf_default_values if self.vecohirf_default_values is not None else []
 
         tunner_1 = OptunaTuner(
             sampler=sampler_1,
@@ -594,9 +617,18 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
             seed=hpo_seed,
         )
 
-        return dict(model_1=model_1, model_params_1=model_params_1, search_space_1=search_space_1, default_values_1=default_values_1,
-                    model_2=model_2, model_params_2=model_params_2, search_space_2=search_space_2, default_values_2=default_values_2,
-                    tunner_1=tunner_1, tunner_2=tunner_2)
+        return dict(
+            cohirf_model=cohirf_model,
+            cohirf_params=cohirf_params,
+            cohirf_search_space=cohirf_search_space,
+            cohirf_default_values=cohirf_default_values,
+            vecohirf_model=vecohirf_model,
+            vecohirf_params=vecohirf_params,
+            vecohirf_search_space=vecohirf_search_space,
+            vecohirf_default_values=vecohirf_default_values,
+            tunner_1=tunner_1,
+            tunner_2=tunner_2,
+        )
 
     @abstractmethod
     def get_dataset_parameters(
@@ -630,14 +662,14 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
     def _fit_model(
         self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: Optional[str] = None, **kwargs
     ):
-        model_1 = kwargs["load_model_return"]["model_1"]
-        model_params_1 = kwargs["load_model_return"]["model_params_1"]
-        search_space_1 = kwargs["load_model_return"]["search_space_1"]
-        default_values_1 = kwargs["load_model_return"]["default_values_1"]
-        model_2 = kwargs["load_model_return"]["model_2"]
-        model_params_2 = kwargs["load_model_return"]["model_params_2"]
-        search_space_2 = kwargs["load_model_return"]["search_space_2"]
-        default_values_2 = kwargs["load_model_return"]["default_values_2"]
+        cohirf_model = kwargs["load_model_return"]["cohirf_model"]
+        cohirf_params = kwargs["load_model_return"]["cohirf_params"]
+        cohirf_search_space = kwargs["load_model_return"]["cohirf_search_space"]
+        cohirf_default_values = kwargs["load_model_return"]["cohirf_default_values"]
+        vecohirf_model = kwargs["load_model_return"]["vecohirf_model"]
+        vecohirf_params = kwargs["load_model_return"]["vecohirf_params"]
+        vecohirf_search_space = kwargs["load_model_return"]["vecohirf_search_space"]
+        vecohirf_default_values = kwargs["load_model_return"]["vecohirf_default_values"]
         tunner_1 = kwargs["load_model_return"]["tunner_1"]
         tunner_2 = kwargs["load_model_return"]["tunner_2"]
 
@@ -689,14 +721,14 @@ class HPOVeCoHiRFExperiment(BaseExperiment, ABC):
             stage_2_experiment=stage_2_experiment,
             tunner_1=tunner_1,
             tunner_2=tunner_2,
-            model_1=model_1,
-            model_2=model_2,
-            model_params_1=model_params_1,
-            model_params_2=model_params_2,
-            search_space_1=search_space_1,
-            search_space_2=search_space_2,
-            default_values_1=default_values_1,
-            default_values_2=default_values_2,
+            cohirf_model=cohirf_model,
+            vecohirf_model=vecohirf_model,
+            cohirf_params=cohirf_params,
+            vecohirf_params=vecohirf_params,
+            cohirf_search_space=cohirf_search_space,
+            vecohirf_search_space=vecohirf_search_space,
+            cohirf_default_values=cohirf_default_values,
+            vecohirf_default_values=vecohirf_default_values,
             n_top_trials=self.n_top_trials,
             metric_1=self.hpo_metric_1,
             metric_2=self.hpo_metric_2,

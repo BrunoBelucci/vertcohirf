@@ -5,9 +5,10 @@ from cocohirf.experiment.tested_models import models_dict
 from ml_experiments.utils import profile_memory, profile_time
 import numpy as np
 import mlflow
+import pandas as pd
 
 
-def split_features_with_prob_and_cap(n_features, n_agents, p_overlap=0.2, max_overlap=0.3, rng_seed=None):
+def split_features_with_prob_and_cap(n_features, n_agents, p_overlap=0.2, max_overlap=0.3, rng_seed=None, sequential_split=True):
     """
     Partition features across agents, then with probability p_overlap
     copy features to other agents, but stop when an agent reaches max_overlap.
@@ -27,7 +28,11 @@ def split_features_with_prob_and_cap(n_features, n_agents, p_overlap=0.2, max_ov
         rng = np.random.default_rng()
 
     # Step 1: Base partition
-    base_splits = np.array_split(np.arange(n_features), n_agents)
+    if sequential_split:
+        base_splits = np.array_split(np.arange(n_features), n_agents)
+    else:
+        shuffled_features = rng.permutation(n_features)
+        base_splits = np.array_split(shuffled_features, n_agents)
     agent_features = {i: set(split.tolist()) for i, split in enumerate(base_splits)}
 
     # Step 2: Track overlap limits
@@ -60,6 +65,7 @@ class CoClusteringExperiment(ClusteringExperiment):
         max_overlap: float = 0.3,
         features_groups: Optional[list[list[int]]] = None,
         agent_i: Optional[int] = None,
+        sequential_split: bool = True,
         **kwargs
     ):
         """
@@ -75,6 +81,7 @@ class CoClusteringExperiment(ClusteringExperiment):
         self.max_overlap = max_overlap
         self.features_groups = features_groups
         self.agent_i = agent_i
+        self.sequential_split = sequential_split
 
     @property
     def models_dict(self):
@@ -90,6 +97,7 @@ class CoClusteringExperiment(ClusteringExperiment):
         # I am not sure if this is parsed correctly from command line, need to verify if we are using it
         self.parser.add_argument('--features_groups', type=list, default=self.features_groups, help='Features groups for each agent')
         self.parser.add_argument('--agent_i', type=int, default=self.agent_i, help='If set, run only the model with partial data for this agent index')
+        self.parser.add_argument('--sequential_split', action='store_true', help='If set, features are split sequentially among agents')
 
     def _unpack_parser(self):
         args = super()._unpack_parser()
@@ -98,16 +106,20 @@ class CoClusteringExperiment(ClusteringExperiment):
         self.max_overlap = args.max_overlap
         self.features_groups = args.features_groups
         self.agent_i = args.agent_i
+        self.sequential_split = args.sequential_split
         return args
 
     def _get_unique_params(self):
         unique_params = super()._get_unique_params()
-        unique_params.update({
-            "n_agents": self.n_agents,
-            "p_overlap": self.p_overlap,
-            "max_overlap": self.max_overlap,
-            "agent_i": self.agent_i,
-        })
+        unique_params.update(
+            {
+                "n_agents": self.n_agents,
+                "p_overlap": self.p_overlap,
+                "max_overlap": self.max_overlap,
+                "agent_i": self.agent_i,
+                "sequential_split": self.sequential_split,
+            }
+        )
         return unique_params
 
     def _get_extra_params(self):
@@ -121,6 +133,7 @@ class CoClusteringExperiment(ClusteringExperiment):
         n_agents = unique_params["n_agents"]
         p_overlap = unique_params["p_overlap"]
         max_overlap = unique_params["max_overlap"]
+        sequential_split = unique_params["sequential_split"]
         features_groups = extra_params["features_groups"]
         X = kwargs["load_data_return"]["X"]
         if "seed_dataset" in combination:
@@ -136,6 +149,7 @@ class CoClusteringExperiment(ClusteringExperiment):
                 p_overlap=p_overlap,
                 max_overlap=max_overlap,
                 rng_seed=seed_dataset,
+                sequential_split=sequential_split,
             )
         else:
             # features groups was provided as an input, we log it to mlflow if available
@@ -157,7 +171,10 @@ class CoClusteringExperiment(ClusteringExperiment):
         if agent_i is None:
             y_pred = model.fit_predict(X, features_groups=features_groups)
         else:
-            y_pred = model.fit_predict(X.iloc[:, features_groups[agent_i]])
+            if isinstance(X, pd.DataFrame):
+                y_pred = model.fit_predict(X.iloc[:, features_groups[agent_i]])
+            else:
+                y_pred = model.fit_predict(X[:, features_groups[agent_i]])
         return {"y_pred": y_pred}
 
     @profile_time(enable_based_on_attribute="profile_time")
@@ -165,9 +182,16 @@ class CoClusteringExperiment(ClusteringExperiment):
     def _evaluate_model(
         self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: Optional[str] = None, **kwargs
     ):
+        agent_i = unique_params["agent_i"]
         scores = kwargs["get_metrics_return"]
         X = kwargs["load_data_return"]["X"]
         y_true = kwargs["load_data_return"]["y"]
+        # if multiple y_true, we suppose y[0] is the global label and y[1:], if any, are local labels
+        if isinstance(y_true, (tuple, list)):
+            if agent_i is None:
+                y_true = y_true[0]
+            else:
+                y_true = y_true[agent_i + 1]
         y_pred = kwargs["fit_model_return"]["y_pred"]
         calculate_metrics_even_if_too_many_clusters = unique_params["calculate_metrics_even_if_too_many_clusters"]
         results = {}
