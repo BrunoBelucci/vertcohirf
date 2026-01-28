@@ -11,3 +11,4 @@ results/
 *mlruns/
 *data/
 vertcohirf_pip_download/
+*.ipynb
