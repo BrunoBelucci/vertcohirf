@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "cocohirf"
+name = "vertcohirf"
 version = "1.0"
-description = """cocohirf"""
+description = """VertCoHiRF"""
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 license = "MIT"
@@ -57,4 +57,4 @@ dependencies = [
 ]
 
 [project.urls]
-"Source code" = "https://github.com/BrunoBelucci/cocohirf"
+"Source code" = "https://github.com/BrunoBelucci/vertcohirf"
