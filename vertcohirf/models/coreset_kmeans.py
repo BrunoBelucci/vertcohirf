@@ -1,5 +1,5 @@
 import numpy as np
-from cocohirf.models.distributed_kmeans import DistributedKMeans
+from vertcohirf.models.distributed_kmeans import DistributedKMeans
 
 
 # The original code can be found at https://github.com/haoyuzhao123/coreset-vfl-codes/tree/main mentioned in "Coresets for vertical federated learning: regularized linear regression and k-means clustering"

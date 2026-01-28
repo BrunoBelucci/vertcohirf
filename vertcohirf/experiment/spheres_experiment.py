@@ -1,8 +1,8 @@
 from cohirf.experiment.spherical_clustering_experiment import SphericalClusteringExperiment
-from cocohirf.experiment.coclustering_experiment import CoClusteringExperiment
-from cocohirf.experiment.tested_models import models_dict
+from vertcohirf.experiment.coclustering_experiment import CoClusteringExperiment
+from vertcohirf.experiment.tested_models import models_dict
 from cohirf.experiment.hpo_clustering_experiment import HPOClusteringExperiment
-from cocohirf.experiment.hpo_vecohirf_experiment import HPOVeCoHiRFExperiment
+from vertcohirf.experiment.hpo_vecohirf_experiment import HPOVeCoHiRFExperiment
 
 
 class SphericalnCoClusteringExperiment(SphericalClusteringExperiment, CoClusteringExperiment):

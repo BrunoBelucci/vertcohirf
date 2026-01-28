@@ -1,5 +1,5 @@
 from cohirf.experiment.hpo_clustering_experiment import HPOClusteringExperiment
-from cocohirf.experiment.open_ml_coclustering_experiment import OpenmlCoClusteringExperiment
+from vertcohirf.experiment.open_ml_coclustering_experiment import OpenmlCoClusteringExperiment
 
 
 class HPOOpenmlCoClusteringExperiment(HPOClusteringExperiment, OpenmlCoClusteringExperiment):

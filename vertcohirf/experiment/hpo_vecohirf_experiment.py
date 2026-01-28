@@ -17,8 +17,8 @@ from ml_experiments.utils import profile_time, profile_memory, flatten_any, upda
 from ml_experiments.tuners import OptunaTuner
 
 from cohirf.experiment.clustering_experiment import ClusteringExperiment
-from cocohirf.experiment.coclustering_experiment import CoClusteringExperiment
-from cocohirf.experiment.tested_models import two_stage_models_dict
+from vertcohirf.experiment.coclustering_experiment import CoClusteringExperiment
+from vertcohirf.experiment.tested_models import two_stage_models_dict
 import json
 
 

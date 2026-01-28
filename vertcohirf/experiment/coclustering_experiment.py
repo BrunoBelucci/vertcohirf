@@ -1,7 +1,7 @@
 from typing import Optional
 from cohirf.experiment.clustering_experiment import ClusteringExperiment, calculate_scores
 from cohirf.experiment.open_ml_clustering_experiment import OpenmlClusteringExperiment
-from cocohirf.experiment.tested_models import models_dict
+from vertcohirf.experiment.tested_models import models_dict
 from ml_experiments.utils import profile_memory, profile_time
 import numpy as np
 import mlflow

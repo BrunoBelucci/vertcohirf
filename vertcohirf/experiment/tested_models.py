@@ -2,9 +2,9 @@ from cohirf.experiment.open_ml_clustering_experiment import models_dict as clust
 from cohirf.models.vecohirf import VeCoHiRF
 from cohirf.models.cohirf import CoHiRF
 import optuna
-from cocohirf.models.coreset_kmeans import CoresetKMeans
-from cocohirf.models.distributed_kmeans import DistributedKMeans
-from cocohirf.models.dpvfl import DPVFL
+from vertcohirf.models.coreset_kmeans import CoresetKMeans
+from vertcohirf.models.distributed_kmeans import DistributedKMeans
+from vertcohirf.models.dpvfl import DPVFL
 from ml_experiments.utils import update_recursively
 from copy import deepcopy
 

@@ -1,6 +1,6 @@
 from cohirf.experiment.open_ml_clustering_experiment import OpenmlClusteringExperiment
-from cocohirf.experiment.coclustering_experiment import CoClusteringExperiment
-from cocohirf.experiment.tested_models import models_dict
+from vertcohirf.experiment.coclustering_experiment import CoClusteringExperiment
+from vertcohirf.experiment.tested_models import models_dict
 
 
 class OpenmlCoClusteringExperiment(OpenmlClusteringExperiment, CoClusteringExperiment):
