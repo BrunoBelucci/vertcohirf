@@ -1,14 +1,19 @@
+import hashlib
 from typing import Optional
 from cohirf.experiment.clustering_experiment import ClusteringExperiment, calculate_scores
-from cohirf.experiment.open_ml_clustering_experiment import OpenmlClusteringExperiment
 from vertcohirf.experiment.tested_models import models_dict
 from ml_experiments.utils import profile_memory, profile_time
 import numpy as np
 import mlflow
 import pandas as pd
+from typing import Literal
+from vertcohirf.experiment.vertibench.splitter import CorrelationSplitter, ImportanceSplitter
+from pathlib import Path
 
 
-def split_features_with_prob_and_cap(n_features, n_agents, p_overlap=0.2, max_overlap=0.3, rng_seed=None, sequential_split=True):
+def split_features_with_prob_and_cap(
+    n_features, n_agents, p_overlap=0.2, max_overlap=0.3, rng_seed=None, sequential_split=True
+):
     """
     Partition features across agents, then with probability p_overlap
     copy features to other agents, but stop when an agent reaches max_overlap.
@@ -65,8 +70,11 @@ class CoClusteringExperiment(ClusteringExperiment):
         max_overlap: float = 0.3,
         features_groups: Optional[list[list[int]]] = None,
         agent_i: Optional[int] = None,
-        sequential_split: bool = True,
-        **kwargs
+        split_mode: Literal["sequential", "random", "importance", "correlation"] = "sequential",
+        importance_splitter_weights: float | list[float] = 1.0,
+        correlation_splitter_beta: float = 0.5,
+        splitter_dir: Optional[str] = None,
+        **kwargs,
     ):
         """
         Co-Clustering Experiment Initialization
@@ -74,6 +82,12 @@ class CoClusteringExperiment(ClusteringExperiment):
             n_agents : int, number of agents
             p_overlap : float, probability of duplicating a feature into another agent
             max_overlap : float in (0,1), maximum overlap fraction per agent
+            features_groups : list of list of int, optional predefined feature groups for each agent
+            agent_i : int, optional index of the agent to run (if None, run with all features)
+            split_mode : str, mode for splitting features among agents ("sequential", "random", "importance", "correlation")
+            importance_splitter_weights : float or list of float, weights for importance-based feature splitting (one or more float values)
+            correlation_splitter_beta : float, beta parameter for correlation-based feature splitting
+            splitter_dir : str, optional directory to save/load feature splits (for reproducibility and faster loading)
         """
         super().__init__(*args, **kwargs)
         self.n_agents = n_agents
@@ -81,7 +95,12 @@ class CoClusteringExperiment(ClusteringExperiment):
         self.max_overlap = max_overlap
         self.features_groups = features_groups
         self.agent_i = agent_i
-        self.sequential_split = sequential_split
+        self.split_mode = split_mode
+        if isinstance(importance_splitter_weights, float):
+            importance_splitter_weights = [importance_splitter_weights] * n_agents
+        self.importance_splitter_weights = importance_splitter_weights
+        self.correlation_splitter_beta = correlation_splitter_beta
+        self.splitter_dir = splitter_dir
 
     @property
     def models_dict(self):
@@ -91,13 +110,43 @@ class CoClusteringExperiment(ClusteringExperiment):
         super()._add_arguments_to_parser()
         if self.parser is None:
             raise ValueError("Parser is not initialized.")
-        self.parser.add_argument('--n_agents', type=int, default=self.n_agents, help='Number of agents')
-        self.parser.add_argument('--p_overlap', type=float, default=self.p_overlap, help='Probability of feature overlap')
-        self.parser.add_argument('--max_overlap', type=float, default=self.max_overlap, help='Maximum feature overlap')
+        self.parser.add_argument("--n_agents", type=int, default=self.n_agents, help="Number of agents")
+        self.parser.add_argument(
+            "--p_overlap", type=float, default=self.p_overlap, help="Probability of feature overlap"
+        )
+        self.parser.add_argument("--max_overlap", type=float, default=self.max_overlap, help="Maximum feature overlap")
         # I am not sure if this is parsed correctly from command line, need to verify if we are using it
-        self.parser.add_argument('--features_groups', type=list, default=self.features_groups, help='Features groups for each agent')
-        self.parser.add_argument('--agent_i', type=int, default=self.agent_i, help='If set, run only the model with partial data for this agent index')
-        self.parser.add_argument('--sequential_split', action='store_true', help='If set, features are split sequentially among agents')
+        self.parser.add_argument(
+            "--features_groups", type=list, default=self.features_groups, help="Features groups for each agent"
+        )
+        self.parser.add_argument(
+            "--agent_i",
+            type=int,
+            default=self.agent_i,
+            help="If set, run only the model with partial data for this agent index",
+        )
+        self.parser.add_argument(
+            "--split_mode", type=str, default=self.split_mode, help="Mode for splitting features among agents"
+        )
+        self.parser.add_argument(
+            "--importance_splitter_weights",
+            nargs="+",
+            type=float,
+            default=self.importance_splitter_weights,
+            help="Weights for importance-based feature splitting (one or more float values)",
+        )
+        self.parser.add_argument(
+            "--correlation_splitter_beta",
+            type=float,
+            default=self.correlation_splitter_beta,
+            help="Beta parameter for correlation-based feature splitting",
+        )
+        self.parser.add_argument(
+            "--splitter_dir",
+            type=str,
+            default=self.splitter_dir,
+            help="Directory to save/load feature splits (for reproducibility and faster loading)",
+        )
 
     def _unpack_parser(self):
         args = super()._unpack_parser()
@@ -106,7 +155,10 @@ class CoClusteringExperiment(ClusteringExperiment):
         self.max_overlap = args.max_overlap
         self.features_groups = args.features_groups
         self.agent_i = args.agent_i
-        self.sequential_split = args.sequential_split
+        self.split_mode = args.split_mode
+        self.importance_splitter_weights = args.importance_splitter_weights
+        self.correlation_splitter_beta = args.correlation_splitter_beta
+        self.splitter_dir = args.splitter_dir
         return args
 
     def _get_unique_params(self):
@@ -117,23 +169,33 @@ class CoClusteringExperiment(ClusteringExperiment):
                 "p_overlap": self.p_overlap,
                 "max_overlap": self.max_overlap,
                 "agent_i": self.agent_i,
-                "sequential_split": self.sequential_split,
+                "split_mode": self.split_mode,
+                "importance_splitter_weights": self.importance_splitter_weights,
+                "correlation_splitter_beta": self.correlation_splitter_beta,
+                "splitter_dir": self.splitter_dir,
             }
         )
         return unique_params
 
     def _get_extra_params(self):
         extra_params = super()._get_extra_params()
-        extra_params.update({
-            "features_groups": self.features_groups,
-        })
+        extra_params.update(
+            {
+                "features_groups": self.features_groups,
+            }
+        )
         return extra_params
 
-    def _after_load_data(self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: str | None = None, **kwargs):
+    def _after_load_data(
+        self, combination: dict, unique_params: dict, extra_params: dict, mlflow_run_id: str | None = None, **kwargs
+    ):
         n_agents = unique_params["n_agents"]
         p_overlap = unique_params["p_overlap"]
         max_overlap = unique_params["max_overlap"]
-        sequential_split = unique_params["sequential_split"]
+        split_mode = unique_params["split_mode"]
+        importance_splitter_weights = unique_params["importance_splitter_weights"]
+        correlation_splitter_beta = unique_params["correlation_splitter_beta"]
+        splitter_dir = unique_params["splitter_dir"]
         features_groups = extra_params["features_groups"]
         X = kwargs["load_data_return"]["X"]
         if "seed_dataset" in combination:
@@ -143,14 +205,56 @@ class CoClusteringExperiment(ClusteringExperiment):
         else:
             raise ValueError("No seed for dataset found in combination")
         if features_groups is None:
-            features_groups = split_features_with_prob_and_cap(
-                X.shape[1],
-                n_agents=n_agents,
-                p_overlap=p_overlap,
-                max_overlap=max_overlap,
-                rng_seed=seed_dataset,
-                sequential_split=sequential_split,
-            )
+            # this is a ugly way to just compute faster the splits for the case of real datasets by storing the results
+            if "dataset_id" in combination:
+                dataset_id = combination["dataset_id"]
+                split_hash = f"dataset-{dataset_id}_seed-{seed_dataset}_nagents-{n_agents}_poverlap-{p_overlap}_maxoverlap-{max_overlap}_splitmode-{split_mode}_importanceweights-{'-'.join(map(str, importance_splitter_weights))}_correlationbeta-{correlation_splitter_beta}"
+                split_hash = hashlib.sha256(split_hash.encode("utf-8")).hexdigest()[:10]  # shorten the name
+                if splitter_dir is not None:
+                    # Check if split cache exists before recomputing.
+                    # Prefer NPZ to preserve NumPy arrays (dtype/shape) and load faster than JSON.
+                    split_path = Path(splitter_dir) / f"{split_hash}.npz"
+                    if split_path.exists():
+                        with np.load(split_path, allow_pickle=False) as data:
+                            features_groups = [data[key] for key in sorted(data.files)]
+                    else:
+                        features_groups = None
+            else: 
+                features_groups = None
+                split_hash = None
+            if features_groups is None:
+                if split_mode in ["sequential", "random"]:
+                    sequential_split = split_mode == "sequential"
+                    features_groups = split_features_with_prob_and_cap(
+                        X.shape[1],
+                        n_agents=n_agents,
+                        p_overlap=p_overlap,
+                        max_overlap=max_overlap,
+                        rng_seed=seed_dataset,
+                        sequential_split=sequential_split,
+                    )
+                elif split_mode in ["importance", "correlation"]:
+                    if split_mode == "importance":
+                        splitter = ImportanceSplitter(
+                            num_parties=n_agents,
+                            weights=importance_splitter_weights, 
+                            seed=seed_dataset,
+                        )
+                    else:  # split_mode == "correlation":
+                        splitter = CorrelationSplitter(num_parties=n_agents, seed=seed_dataset)
+                        if isinstance(X, pd.DataFrame):
+                            X_values = X.values # CorrelationSplitter expects a numpy array
+                        else:
+                            X_values = X
+                        splitter.fit(X_values)
+                    features_groups = splitter.split_indices(X, allow_empty_party=False, beta=correlation_splitter_beta)
+                else:
+                    raise ValueError(f"Unknown split mode: {split_mode}")
+                if splitter_dir is not None and split_hash is not None:
+                    split_path = Path(splitter_dir) / f"{split_hash}.npz"
+                    split_path.parent.mkdir(parents=True, exist_ok=True)
+                    # Save variable-length feature groups as separate arrays in a compressed NPZ archive.
+                    np.savez_compressed(split_path, *[np.asarray(group, dtype=np.int64) for group in features_groups])
         else:
             # features groups was provided as an input, we log it to mlflow if available
             if mlflow_run_id is not None:
@@ -211,7 +315,9 @@ class CoClusteringExperiment(ClusteringExperiment):
         # get results for each agent
         results_list = []
         for i, y_pred_i in enumerate(y_pred):
-            results_i = calculate_scores(calculate_metrics_even_if_too_many_clusters, min_n_clusters, X, y_true, y_pred_i, scores)
+            results_i = calculate_scores(
+                calculate_metrics_even_if_too_many_clusters, min_n_clusters, X, y_true, y_pred_i, scores
+            )
             results_list.append(results_i)
         # aggregate results
         for metric in results_list[0].keys():
