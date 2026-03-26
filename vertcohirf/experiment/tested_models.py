@@ -4,6 +4,7 @@ from cohirf.models.cohirf import CoHiRF
 import optuna
 from vertcohirf.models.coreset_kmeans import CoresetKMeans
 from vertcohirf.models.distributed_kmeans import DistributedKMeans
+from vertcohirf.models.vfckm import VFCkM
 from vertcohirf.models.dpvfl import DPVFL
 from ml_experiments.utils import update_recursively
 from copy import deepcopy
@@ -36,6 +37,18 @@ models_dict = {
     ),
     CoresetKMeans.__name__: (
         CoresetKMeans,
+        dict(),
+        dict(
+            kmeans_n_clusters=optuna.distributions.IntDistribution(2, 30),
+        ),
+        [
+            dict(
+                kmeans_n_clusters=8,
+            )
+        ],
+    ),
+    VFCkM.__name__: (
+        VFCkM,
         dict(),
         dict(
             kmeans_n_clusters=optuna.distributions.IntDistribution(2, 30),

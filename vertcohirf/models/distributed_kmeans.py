@@ -5,6 +5,7 @@ from sklearn.cluster import KMeans
 from joblib import Parallel, delayed
 
 
+
 class DistributedKMeans(ClusterMixin, BaseEstimator):
 
     def __init__(
@@ -140,3 +141,4 @@ class DistributedKMeans(ClusterMixin, BaseEstimator):
     ):
         self.fit(X, features_groups, y, sample_weight)
         return self.labels_
+    

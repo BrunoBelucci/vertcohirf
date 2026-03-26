@@ -261,6 +261,7 @@ class CoClusteringExperiment(ClusteringExperiment):
                 mlflow.log_params({"features_groups_": features_groups}, run_id=mlflow_run_id)
         ret = super()._after_load_data(combination, unique_params, extra_params, mlflow_run_id, **kwargs)
         ret["features_groups"] = features_groups
+        ret["splitter"] = splitter if split_mode in ["importance", "correlation"] else None
         return ret
 
     @profile_time(enable_based_on_attribute="profile_time")
