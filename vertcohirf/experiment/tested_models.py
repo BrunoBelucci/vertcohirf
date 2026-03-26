@@ -6,6 +6,7 @@ from vertcohirf.models.coreset_kmeans import CoresetKMeans
 from vertcohirf.models.distributed_kmeans import DistributedKMeans
 from vertcohirf.models.vfckm import VFCkM
 from vertcohirf.models.dpvfl import DPVFL
+from vertcohirf.models.vfdpc import VFDPC
 from ml_experiments.utils import update_recursively
 from copy import deepcopy
 
@@ -56,6 +57,34 @@ models_dict = {
         [
             dict(
                 kmeans_n_clusters=8,
+            )
+        ],
+    ),
+    VFDPC.__name__: (
+        VFDPC,
+        dict(),
+        dict(
+            kmeans_n_clusters=optuna.distributions.IntDistribution(2, 30),
+            knn_k=optuna.distributions.IntDistribution(5, 60),
+        ),
+        [
+            dict(
+                kmeans_n_clusters=8,
+                knn_k=20,
+            )
+        ],
+    ),
+    VFDPC.__name__ + "Local": (
+        VFDPC,
+        dict(use_server_labels=False),
+        dict(
+            kmeans_n_clusters=optuna.distributions.IntDistribution(2, 30),
+            knn_k=optuna.distributions.IntDistribution(5, 60),
+        ),
+        [
+            dict(
+                kmeans_n_clusters=8,
+                knn_k=20,
             )
         ],
     ),
