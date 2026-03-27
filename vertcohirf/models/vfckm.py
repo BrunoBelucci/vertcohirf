@@ -133,8 +133,11 @@ class VFCkM(ClusterMixin, BaseEstimator):
         if len(shared) == 0:
             return np.arange(reference_centers.shape[0])
 
-        ref_idx = [reference_group.index(f) for f in shared]
-        grp_idx = [group.index(f) for f in shared]
+        # Build position maps once so this works with both Python lists and NumPy arrays.
+        ref_pos = {int(f): i for i, f in enumerate(reference_group)}
+        grp_pos = {int(f): i for i, f in enumerate(group)}
+        ref_idx = [ref_pos[int(f)] for f in shared]
+        grp_idx = [grp_pos[int(f)] for f in shared]
 
         ref_proj = reference_centers[:, ref_idx]
         grp_proj = centers[:, grp_idx]
