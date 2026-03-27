@@ -197,6 +197,7 @@ class CoClusteringExperiment(ClusteringExperiment):
         correlation_splitter_beta = unique_params["correlation_splitter_beta"]
         splitter_dir = unique_params["splitter_dir"]
         features_groups = extra_params["features_groups"]
+        splitter = None
         X = kwargs["load_data_return"]["X"]
         if "seed_dataset" in combination:
             seed_dataset = combination["seed_dataset"]
@@ -216,7 +217,9 @@ class CoClusteringExperiment(ClusteringExperiment):
                     split_path = Path(splitter_dir) / f"{split_hash}.npz"
                     if split_path.exists():
                         with np.load(split_path, allow_pickle=False) as data:
-                            features_groups = [data[key] for key in sorted(data.files)]
+                            # np.load returns NumPy arrays; normalize to plain Python lists for stable downstream types.
+                            keys = sorted(data.files, key=lambda k: int(k.split("_")[-1]))
+                            features_groups = [data[key].astype(np.int64, copy=False).tolist() for key in keys]
                     else:
                         features_groups = None
             else: 
@@ -259,6 +262,8 @@ class CoClusteringExperiment(ClusteringExperiment):
             # features groups was provided as an input, we log it to mlflow if available
             if mlflow_run_id is not None:
                 mlflow.log_params({"features_groups_": features_groups}, run_id=mlflow_run_id)
+        if features_groups is not None:
+            features_groups = [list(map(int, group)) for group in features_groups]
         ret = super()._after_load_data(combination, unique_params, extra_params, mlflow_run_id, **kwargs)
         ret["features_groups"] = features_groups
         ret["splitter"] = splitter if split_mode in ["importance", "correlation"] else None
