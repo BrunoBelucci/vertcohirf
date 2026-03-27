@@ -191,7 +191,8 @@ class VFCkM(ClusterMixin, BaseEstimator):
             aligned_centers.append(centers_i[i][order])
             aligned_weights.append(weights_i[i][order])
 
-        aligned_centers = np.asarray(aligned_centers)
+        # Clients can have different local dimensionalities, so we must keep
+        # centers as a list of arrays instead of stacking into a 3D array.
         aligned_weights = np.asarray(aligned_weights)
         global_centers = np.zeros((n_clusters, n_features), dtype=float)
 
@@ -206,7 +207,7 @@ class VFCkM(ClusterMixin, BaseEstimator):
                 candidate_weights = np.array([aligned_weights[cid, k] for cid, _ in providers])
                 winner = int(np.argmax(candidate_weights))
                 winner_client, winner_local_idx = providers[winner]
-                global_centers[k, feature_idx] = aligned_centers[winner_client, k, winner_local_idx]
+                global_centers[k, feature_idx] = aligned_centers[winner_client][k, winner_local_idx]
 
         total_error = float(np.sum(errors_i))
         # final_labels = np.asarray(labels_i[reference_client])
